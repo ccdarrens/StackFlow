@@ -3,7 +3,6 @@ import { renderStartView } from './views/startView';
 import { renderSessionsView } from './views/sessionsView';
 import { renderStatsView } from './views/statsView';
 
-import { getCurrentRoute } from './router';
 import type { Route } from './router';
 
 export async function renderApp(route: Route, service: SessionService) {
@@ -11,7 +10,6 @@ export async function renderApp(route: Route, service: SessionService) {
   const root = document.getElementById('app');
   if (!root) return;
 
-  //const route = getCurrentRoute();
   console.log('current route:', route);
   root.innerHTML = '';  // clear page
 

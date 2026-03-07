@@ -15,3 +15,87 @@ html, body {
 .app-container {
   padding: 20px;
 }
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 999;
+}
+
+.sheet {
+  width: min(640px, 100%);
+  border-radius: 18px 18px 0 0;
+  background: #0f2b20;
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.35);
+  padding: 18px;
+  animation: sheet-rise 160ms ease-out;
+}
+
+.sheet h2 {
+  margin: 0 0 12px;
+}
+
+.sheet-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sheet-form input {
+  background: #0a1f17;
+  border: 1px solid rgba(243, 239, 227, 0.22);
+  color: var(--ivory);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pill-btn {
+  border: 1px solid rgba(201, 162, 39, 0.65);
+  background: transparent;
+  color: var(--ivory);
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.sheet-error {
+  color: #ffb4b4;
+  min-height: 20px;
+  margin: 4px 0;
+}
+
+.sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ghost-btn {
+  background: transparent;
+  border: 1px solid rgba(243, 239, 227, 0.3);
+  color: var(--ivory);
+}
+
+@keyframes sheet-rise {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

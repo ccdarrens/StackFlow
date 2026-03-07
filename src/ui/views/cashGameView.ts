@@ -39,7 +39,6 @@ export async function renderCashGameView(session: Session, service: SessionServi
     const diff = Date.now() - start;
     const minutes = Math.floor(diff / 60000);
     const seconds = Math.floor((diff % 60000) / 1000);
-    console.log('Duration update', minutes, seconds);
     durationEl.textContent = `${minutes}:${seconds.toString().padStart(2,'0')}`;
   }, 1000);
 

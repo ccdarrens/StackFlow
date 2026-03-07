@@ -7,7 +7,7 @@ import { generateId } from '../utils/id';
 
 export interface SessionService {
 
-  createCashSession(stakes?: string, location?: string, initialBuyInCents?: number): Promise<Session>;
+  createCashSession(stakes?: string, location?: string, initialBuyInCents?: number, startedAtOverride?: number): Promise<Session>;
 
   createTournamentSession(stakes?: string, location?: string, buyInCents?: number): Promise<Session>;
 
@@ -37,7 +37,8 @@ export class DefaultSessionService implements SessionService {
   async createCashSession(
     stakes?: string,
     location?: string,
-    initialBuyInCents: number = 0
+    initialBuyInCents: number = 0,
+    startedAtOverride?: number
   ): Promise<Session> {
 
     const existing = await this.repository.getActiveSession();
@@ -45,7 +46,11 @@ export class DefaultSessionService implements SessionService {
       throw new Error('An active session already exists');
     }
 
-    const now = Date.now();
+    const now = startedAtOverride ?? Date.now();
+
+    if (!Number.isFinite(now) || now <= 0) {
+      throw new Error('Invalid session start time');
+    }
 
     const session: Session = {
       id: generateId(),
@@ -228,3 +233,5 @@ export class DefaultSessionService implements SessionService {
   }
 
 }
+
+

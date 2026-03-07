@@ -29,6 +29,7 @@ export async function renderSessionsView(service: SessionService ): Promise<HTML
         return `
           <div style="margin-bottom:10px;">
             <strong>${s.mode === 'cash' ? 'Cash' : 'Tournament'}</strong> |
+            ${s.location} |
             ${new Date(s.startedAt).toLocaleDateString()} |
             ${hours} hrs |
             $${(totals.grossProfit / 100).toFixed(2)}
