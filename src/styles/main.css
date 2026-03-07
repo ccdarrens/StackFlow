@@ -1,0 +1,17 @@
+:root {
+  --felt-green: #123B2A;
+  --ivory: #F3EFE3;
+  --gold: #C9A227;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--felt-green);
+  color: var(--ivory);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.app-container {
+  padding: 20px;
+}
