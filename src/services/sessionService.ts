@@ -11,7 +11,7 @@ export interface SessionService {
 
   createTournamentSession(stakes?: string, location?: string, buyInCents?: number, startedAtOverride?: number): Promise<Session>;
 
-  addInvestment(amountCents: number, note?: string): Promise<Session>;
+  addInvestment(amountCents: number, note?: string, overrideTimestamp?: number): Promise<Session>;
   
   addReturn(amountCents: number, note?: string): Promise<Session>;
 
@@ -145,7 +145,7 @@ export class DefaultSessionService implements SessionService {
     return session;
   }
 
-  async addInvestment(amountCents: number, note?: string): Promise<Session> {
+  async addInvestment(amountCents: number, note?: string, overrideTimestamp?: number): Promise<Session> {
     const session = await this.requireActiveSession();
     if (!isActive(session)) {
       throw new Error('Cannot add investment to closed session');
@@ -155,7 +155,11 @@ export class DefaultSessionService implements SessionService {
       throw new Error('Amount must be positive');
     }
 
-    session.events.push(this.createEvent('investment', amountCents, note));
+    if (overrideTimestamp !== undefined && (!Number.isFinite(overrideTimestamp) || overrideTimestamp <= 0)) {
+      throw new Error('Invalid investment timestamp');
+    }
+
+    session.events.push(this.createEvent('investment', amountCents, note, overrideTimestamp));
     session.updatedAt = Date.now();
 
     await this.repository.saveSession(session);
@@ -215,12 +219,12 @@ export class DefaultSessionService implements SessionService {
     return session;
   }
 
-  private createEvent(type: EventType, amountCents: number, note?: string): SessionEvent {
+  private createEvent(type: EventType, amountCents: number, note?: string, overrideTimestamp?: number): SessionEvent {
     return {
       id: generateId(),
       type,
       amount: amountCents,
-      timestamp: Date.now(),
+      timestamp: overrideTimestamp ?? Date.now(),
       note
     };
   }
@@ -237,6 +241,8 @@ export class DefaultSessionService implements SessionService {
   }
 
 }
+
+
 
 
 

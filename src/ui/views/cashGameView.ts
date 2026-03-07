@@ -17,6 +17,124 @@ function formatDuration(durationMs: number): string {
   return days > 0 ? `${days}d ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
 }
 
+function pad2(value: number): string {
+  return value.toString().padStart(2, '0');
+}
+
+function formatDateTimeLocal(now: Date): string {
+  const year = now.getFullYear();
+  const month = pad2(now.getMonth() + 1);
+  const day = pad2(now.getDate());
+  const hours = pad2(now.getHours());
+  const minutes = pad2(now.getMinutes());
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function parseDollarsToCents(rawValue: string): number | null {
+  const normalized = rawValue.replace(/[$,\s]/g, '');
+  if (!normalized) {
+    return null;
+  }
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return null;
+  }
+
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return null;
+  }
+
+  return Math.round(amount * 100);
+}
+
+function openAddonSheet(service: SessionService): void {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+
+  backdrop.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="addonTitle">
+      <h2 id="addonTitle">Add Addon</h2>
+      <form id="addonForm" class="sheet-form">
+        <label for="addonAt">Date & Time</label>
+        <input id="addonAt" type="datetime-local" required />
+
+        <label for="addonAmount">Addon Amount ($)</label>
+        <input id="addonAmount" type="text" inputmode="decimal" placeholder="e.g. 50" required />
+
+        <p id="addonError" class="sheet-error"></p>
+
+        <div class="sheet-actions">
+          <button type="button" id="cancelAddon" class="ghost-btn">Cancel</button>
+          <button type="submit" id="saveAddon">Save Addon</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const form = backdrop.querySelector('#addonForm') as HTMLFormElement;
+  const addonAtInput = backdrop.querySelector('#addonAt') as HTMLInputElement;
+  const addonAmountInput = backdrop.querySelector('#addonAmount') as HTMLInputElement;
+  const errorEl = backdrop.querySelector('#addonError') as HTMLParagraphElement;
+  const cancelButton = backdrop.querySelector('#cancelAddon') as HTMLButtonElement;
+  const saveButton = backdrop.querySelector('#saveAddon') as HTMLButtonElement;
+
+  addonAtInput.value = formatDateTimeLocal(new Date());
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      close();
+    }
+  };
+
+  const close = () => {
+    document.removeEventListener('keydown', onKeyDown);
+    backdrop.remove();
+  };
+
+  cancelButton.addEventListener('click', close);
+
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) {
+      close();
+    }
+  });
+
+  document.addEventListener('keydown', onKeyDown);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    errorEl.textContent = '';
+
+    const startedAt = addonAtInput.value ? new Date(addonAtInput.value).getTime() : Number.NaN;
+    if (!Number.isFinite(startedAt)) {
+      errorEl.textContent = 'Please enter a valid date and time.';
+      return;
+    }
+
+    const amountCents = parseDollarsToCents(addonAmountInput.value.trim());
+    if (amountCents === null) {
+      errorEl.textContent = 'Please enter a valid addon amount (example: 50 or 50.25).';
+      return;
+    }
+
+    saveButton.disabled = true;
+
+    try {
+      await service.addInvestment(amountCents, 'addon', startedAt);
+      close();
+      navigate('start');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save addon.';
+      errorEl.textContent = message;
+      saveButton.disabled = false;
+    }
+  });
+}
+
 export async function renderCashGameView(session: Session, service: SessionService): Promise<HTMLElement> {
   const container = document.createElement('div');
   container.className = 'app-container';
@@ -36,7 +154,7 @@ export async function renderCashGameView(session: Session, service: SessionServi
       <h2>Net: $${(totals.netProfit / 100).toFixed(2)}</h2>
       <hr/>
       <div id="actions">
-        <button id="addon">Addon ($50)</button>
+        <button id="addon">Addon</button>
         <button id="tip">Tip ($1)</button>
         <button id="food">Food ($5)</button>
         <button id="cashOut">Cash Out ($200)</button>
@@ -50,9 +168,8 @@ export async function renderCashGameView(session: Session, service: SessionServi
   }, 1000);
 
   container.querySelector('#addon')!
-    .addEventListener('click', async () => {
-      await service.addInvestment(5000, 'addon');
-      navigate('start');
+    .addEventListener('click', () => {
+      openAddonSheet(service);
     });
 
   container.querySelector('#tip')!
