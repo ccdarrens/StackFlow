@@ -333,6 +333,20 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         </div>
       </div>
 
+      <div id="sessionsCashWinrateByStakesCard" class="sessions-chart-card" hidden>
+        <h3>Cash Game Winrate by Stakes</h3>
+        <div class="sessions-chart-wrap">
+          <canvas id="sessionsCashWinrateByStakesChart"></canvas>
+        </div>
+      </div>
+
+      <div id="sessionsCashLengthProfitCard" class="sessions-chart-card" hidden>
+        <h3>Cash Game Session Length vs Profit</h3>
+        <div class="sessions-chart-wrap">
+          <canvas id="sessionsCashLengthProfitChart"></canvas>
+        </div>
+      </div>
+
       <div id="sessionsTournamentItmCard" class="sessions-chart-card" hidden>
         <h3>Tournament In-the-Money %</h3>
         <div class="sessions-chart-wrap sessions-chart-wrap-small">
@@ -362,6 +376,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const empty = container.querySelector('#sessionsEmpty') as HTMLParagraphElement;
   const cumulativeCanvas = container.querySelector('#sessionsCumulativeChart') as HTMLCanvasElement;
   const dayOfWeekCanvas = container.querySelector('#sessionsDayOfWeekChart') as HTMLCanvasElement;
+  const cashWinrateByStakesCard = container.querySelector('#sessionsCashWinrateByStakesCard') as HTMLDivElement;
+  const cashWinrateByStakesCanvas = container.querySelector('#sessionsCashWinrateByStakesChart') as HTMLCanvasElement;
+  const cashLengthProfitCard = container.querySelector('#sessionsCashLengthProfitCard') as HTMLDivElement;
+  const cashLengthProfitCanvas = container.querySelector('#sessionsCashLengthProfitChart') as HTMLCanvasElement;
   const itmCard = container.querySelector('#sessionsTournamentItmCard') as HTMLDivElement;
   const itmCanvas = container.querySelector('#sessionsTournamentItmChart') as HTMLCanvasElement;
   const roiByBuyinCard = container.querySelector('#sessionsTournamentRoiByBuyinCard') as HTMLDivElement;
@@ -375,6 +393,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   let cumulativeChart: Chart | null = null;
   let dayOfWeekChart: Chart | null = null;
+  let cashWinrateByStakesChart: Chart | null = null;
+  let cashLengthProfitChart: Chart | null = null;
   let itmChart: Chart | null = null;
   let roiByBuyinChart: Chart | null = null;
 
@@ -554,6 +574,169 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     dayOfWeekChart.data.datasets[0].data = daytime;
     dayOfWeekChart.data.datasets[1].data = nighttime;
     dayOfWeekChart.update();
+  };
+
+
+  const updateCashWinrateByStakesChart = (sessions: Session[]) => {
+    const cashSessions = sessions.filter(session => session.mode === 'cash');
+
+    if (cashSessions.length === 0) {
+      cashWinrateByStakesCard.hidden = true;
+      if (cashWinrateByStakesChart) {
+        cashWinrateByStakesChart.destroy();
+        cashWinrateByStakesChart = null;
+      }
+      return;
+    }
+
+    const byStakes = new Map<string, { gross: number; net: number }>();
+    for (const session of cashSessions) {
+      const key = (session.stakes ?? '').trim() || 'Unspecified';
+      const totals = calculateSessionTotals(session);
+      const existing = byStakes.get(key) ?? { gross: 0, net: 0 };
+      existing.gross += totals.grossProfit;
+      existing.net += totals.netProfit;
+      byStakes.set(key, existing);
+    }
+
+    const labels = Array.from(byStakes.keys()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const gross = labels.map(label => Number((byStakes.get(label)!.gross / 100).toFixed(2)));
+    const net = labels.map(label => Number((byStakes.get(label)!.net / 100).toFixed(2)));
+
+    cashWinrateByStakesCard.hidden = labels.length === 0;
+    if (labels.length === 0) {
+      if (cashWinrateByStakesChart) {
+        cashWinrateByStakesChart.destroy();
+        cashWinrateByStakesChart = null;
+      }
+      return;
+    }
+
+    if (!cashWinrateByStakesChart) {
+      cashWinrateByStakesChart = new Chart(cashWinrateByStakesCanvas, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Gross Profit',
+              data: gross,
+              backgroundColor: 'rgba(127, 215, 143, 0.75)',
+              borderColor: '#7fd78f',
+              borderWidth: 1
+            },
+            {
+              label: 'Net Profit',
+              data: net,
+              backgroundColor: 'rgba(201, 162, 39, 0.75)',
+              borderColor: '#c9a227',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                color: '#F3EFE3'
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            },
+            y: {
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            }
+          }
+        }
+      });
+      return;
+    }
+
+    cashWinrateByStakesChart.data.labels = labels;
+    cashWinrateByStakesChart.data.datasets[0].data = gross;
+    cashWinrateByStakesChart.data.datasets[1].data = net;
+    cashWinrateByStakesChart.update();
+  };
+  const updateCashLengthVsProfitChart = (sessions: Session[]) => {
+    const cashSessions = sessions.filter(session => session.mode === 'cash');
+
+    if (cashSessions.length === 0) {
+      cashLengthProfitCard.hidden = true;
+      if (cashLengthProfitChart) {
+        cashLengthProfitChart.destroy();
+        cashLengthProfitChart = null;
+      }
+      return;
+    }
+
+    cashLengthProfitCard.hidden = false;
+
+    const points = cashSessions.map(session => {
+      const totals = calculateSessionTotals(session);
+      return {
+        x: Number(sessionHours(session).toFixed(2)),
+        y: Number((totals.grossProfit / 100).toFixed(2))
+      };
+    });
+
+    if (!cashLengthProfitChart) {
+      cashLengthProfitChart = new Chart(cashLengthProfitCanvas, {
+        type: 'scatter',
+        data: {
+          datasets: [
+            {
+              label: 'Cash Sessions',
+              data: points,
+              backgroundColor: 'rgba(127, 215, 143, 0.8)',
+              borderColor: '#7fd78f',
+              pointRadius: 4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                color: '#F3EFE3'
+              }
+            }
+          },
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: 'Hours',
+                color: '#F3EFE3'
+              },
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            },
+            y: {
+              title: {
+                display: true,
+                text: 'Profit ($)',
+                color: '#F3EFE3'
+              },
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            }
+          }
+        }
+      });
+      return;
+    }
+
+    cashLengthProfitChart.data.datasets[0].data = points;
+    cashLengthProfitChart.update();
   };
 
   const updateTournamentItmChart = (sessions: Session[]) => {
@@ -746,9 +929,24 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       dayOfWeekChart = null;
     }
 
+    if (cashWinrateByStakesChart) {
+      cashWinrateByStakesChart.destroy();
+      cashWinrateByStakesChart = null;
+    }
+
+    if (cashLengthProfitChart) {
+      cashLengthProfitChart.destroy();
+      cashLengthProfitChart = null;
+    }
+
     if (itmChart) {
       itmChart.destroy();
       itmChart = null;
+    }
+
+    if (roiByBuyinChart) {
+      roiByBuyinChart.destroy();
+      roiByBuyinChart = null;
     }
 
     navigate('start');
@@ -830,6 +1028,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
     updateCumulativeChart(filtered);
     updateDayOfWeekChart(filtered);
+    updateCashWinrateByStakesChart(filtered);
+    updateCashLengthVsProfitChart(filtered);
     updateTournamentItmChart(filtered);
     updateTournamentRoiByBuyinChart(filtered);
   };
@@ -842,6 +1042,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
+
+
 
 
 
