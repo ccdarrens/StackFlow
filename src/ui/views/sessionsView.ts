@@ -1,42 +1,409 @@
 import type { SessionService } from '../../services/sessionService';
+import type { Session } from '../../models/session';
 import { calculateSessionTotals } from '../../stats/calculators';
 
-export async function renderSessionsView(service: SessionService ): Promise<HTMLElement> {
-  
-  const completed = await service.getCompletedSessions();
-  console.log('completed sessions:', completed);
+type SessionFilterType = 'all' | 'cash' | 'tournament';
+type DateRangeFilter = 'all' | 'last_7_days' | 'last_month' | 'last_3_months' | 'last_year' | 'year_to_date';
+type ExportFormat = 'json' | 'csv';
+
+interface SessionsFilters {
+  type: SessionFilterType;
+  location: string;
+  dateRange: DateRangeFilter;
+}
+
+const SESSIONS_FILTERS_KEY = 'stackflow.sessions.filters.v1';
+
+function defaultFilters(): SessionsFilters {
+  return {
+    type: 'all',
+    location: '',
+    dateRange: 'all'
+  };
+}
+
+function loadFilters(): SessionsFilters {
+  const raw = localStorage.getItem(SESSIONS_FILTERS_KEY);
+  if (!raw) {
+    return defaultFilters();
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<SessionsFilters>;
+
+    const dateRange = parsed.dateRange;
+    const normalizedDateRange: DateRangeFilter =
+      dateRange === 'last_7_days' ||
+      dateRange === 'last_month' ||
+      dateRange === 'last_3_months' ||
+      dateRange === 'last_year' ||
+      dateRange === 'year_to_date'
+        ? dateRange
+        : 'all';
+
+    return {
+      type: parsed.type === 'cash' || parsed.type === 'tournament' ? parsed.type : 'all',
+      location: typeof parsed.location === 'string' ? parsed.location : '',
+      dateRange: normalizedDateRange
+    };
+  } catch {
+    return defaultFilters();
+  }
+}
+
+function saveFilters(filters: SessionsFilters): void {
+  localStorage.setItem(SESSIONS_FILTERS_KEY, JSON.stringify(filters));
+}
+
+function formatProfit(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function formatDate(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString();
+}
+
+function sessionHours(session: Session): number {
+  if (!session.endedAt || session.endedAt <= session.startedAt) {
+    return 0;
+  }
+
+  return (session.endedAt - session.startedAt) / (1000 * 60 * 60);
+}
+
+function formatHours(hours: number): string {
+  return hours.toFixed(2);
+}
+
+function getDateRangeStartMs(range: DateRangeFilter): number | null {
+  const now = new Date();
+
+  switch (range) {
+    case 'all':
+      return null;
+    case 'last_7_days': {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 7);
+      return start.getTime();
+    }
+    case 'last_month': {
+      const start = new Date(now);
+      start.setMonth(start.getMonth() - 1);
+      return start.getTime();
+    }
+    case 'last_3_months': {
+      const start = new Date(now);
+      start.setMonth(start.getMonth() - 3);
+      return start.getTime();
+    }
+    case 'last_year': {
+      const start = new Date(now);
+      start.setFullYear(start.getFullYear() - 1);
+      return start.getTime();
+    }
+    case 'year_to_date': {
+      const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      return start.getTime();
+    }
+  }
+}
+
+function matchesFilters(session: Session, filters: SessionsFilters): boolean {
+  if (filters.type !== 'all' && session.mode !== filters.type) {
+    return false;
+  }
+
+  const location = (session.location ?? '').trim();
+  if (filters.location && location !== filters.location) {
+    return false;
+  }
+
+  const rangeStartMs = getDateRangeStartMs(filters.dateRange);
+  if (rangeStartMs !== null && session.startedAt < rangeStartMs) {
+    return false;
+  }
+
+  return true;
+}
+
+function collectLocations(sessions: Session[]): string[] {
+  const seen = new Set<string>();
+  const locations: string[] = [];
+
+  for (const session of sessions) {
+    const location = (session.location ?? '').trim();
+    if (!location) {
+      continue;
+    }
+
+    const key = location.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    locations.push(location);
+  }
+
+  return locations.sort((a, b) => a.localeCompare(b));
+}
+
+function csvCell(value: string | number | undefined): string {
+  const raw = value === undefined ? '' : String(value);
+  const escaped = raw.replace(/"/g, '""');
+  return `"${escaped}"`;
+}
+
+function buildSessionsCsv(sessions: Session[]): string {
+  const headers = [
+    'id',
+    'type',
+    'location',
+    'stakes',
+    'started_at_iso',
+    'ended_at_iso',
+    'duration_hours',
+    'event_count',
+    'invested_cents',
+    'returned_cents',
+    'expenses_cents',
+    'gross_profit_cents',
+    'net_profit_cents',
+    'roi_percent',
+    'net_roi_percent'
+  ];
+
+  const lines = [headers.join(',')];
+
+  for (const session of sessions) {
+    const totals = calculateSessionTotals(session);
+    const row = [
+      csvCell(session.id),
+      csvCell(session.mode === 'cash' ? 'Cash' : 'Tournament'),
+      csvCell(session.location ?? ''),
+      csvCell(session.stakes ?? ''),
+      csvCell(new Date(session.startedAt).toISOString()),
+      csvCell(session.endedAt ? new Date(session.endedAt).toISOString() : ''),
+      csvCell(formatHours(sessionHours(session))),
+      csvCell(session.events.length),
+      csvCell(totals.invested),
+      csvCell(totals.returned),
+      csvCell(totals.expenses),
+      csvCell(totals.grossProfit),
+      csvCell(totals.netProfit),
+      csvCell(totals.roi === undefined ? '' : (totals.roi * 100).toFixed(2)),
+      csvCell(totals.netRoi === undefined ? '' : (totals.netRoi * 100).toFixed(2))
+    ];
+
+    lines.push(row.join(','));
+  }
+
+  return lines.join('\n');
+}
+
+function downloadTextFile(content: string, fileName: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function renderSessionsView(service: SessionService): Promise<HTMLElement> {
+  const completed = (await service.getCompletedSessions())
+    .slice()
+    .sort((a, b) => b.startedAt - a.startedAt);
+
+  const locations = collectLocations(completed);
+  const filters = loadFilters();
+
+  if (filters.location && !locations.includes(filters.location)) {
+    filters.location = '';
+  }
+
   const container = document.createElement('div');
-  
+  container.className = 'app-container';
+
   container.innerHTML = `
-    <div class="app-container">
+    <div class="sessions-card">
       <h2>Past Sessions</h2>
-      <div id="history"></div>
+
+      <div class="sessions-toolbar">
+        <select id="sessionsExportFormat">
+          <option value="json">JSON</option>
+          <option value="csv">CSV</option>
+        </select>
+        <button id="sessionsExportButton" type="button">Export Filtered Sessions</button>
+      </div>
+
+      <div class="sessions-filters">
+        <div class="sessions-filter-field">
+          <label for="sessionsTypeFilter">Type</label>
+          <select id="sessionsTypeFilter">
+            <option value="all">All</option>
+            <option value="cash">Cash</option>
+            <option value="tournament">Tournament</option>
+          </select>
+        </div>
+
+        <div class="sessions-filter-field">
+          <label for="sessionsLocationFilter">Location</label>
+          <select id="sessionsLocationFilter">
+            <option value="">All Locations</option>
+            ${locations.map(location => `<option value="${location}">${location}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="sessions-filter-field">
+          <label for="sessionsDateRangeFilter">Date Range</label>
+          <select id="sessionsDateRangeFilter">
+            <option value="all">All</option>
+            <option value="last_7_days">Last 7 Days</option>
+            <option value="last_month">Last Month</option>
+            <option value="last_3_months">Last 3 Months</option>
+            <option value="last_year">Last Year</option>
+            <option value="year_to_date">Year to Date</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sessions-grid-wrap">
+        <div class="sessions-grid sessions-grid-header">
+          <div>Profit</div>
+          <div>Date</div>
+          <div>Hours</div>
+          <div>Location</div>
+          <div>Type</div>
+        </div>
+
+        <div id="sessionsGridBody" class="sessions-grid-body"></div>
+      </div>
+
+      <div class="sessions-footer">
+        <div class="sessions-footer-item">
+          <span class="sessions-footer-label">Total Profit</span>
+          <span id="sessionsTotalProfit" class="sessions-profit sessions-profit-neutral">$0.00</span>
+        </div>
+        <div class="sessions-footer-item">
+          <span class="sessions-footer-label">Hours</span>
+          <span id="sessionsTotalHours">0.00</span>
+        </div>
+        <div class="sessions-footer-item">
+          <span class="sessions-footer-label">Profit / Hour</span>
+          <span id="sessionsProfitPerHour">$0.00</span>
+        </div>
+      </div>
+
+      <p id="sessionsEmpty" class="sessions-empty" hidden>No sessions found for the selected filters.</p>
     </div>
   `;
 
-  const historyDiv = container.querySelector('#history'); 
-  console.log('history div:', historyDiv);
-  if (historyDiv) {
-    if (completed.length === 0) {
-      historyDiv.innerHTML = `<p>No past sessions yet.</p>`;
-    } else {
-      historyDiv.innerHTML = completed.map(s => {
-        const totals = calculateSessionTotals(s);
+  const typeSelect = container.querySelector('#sessionsTypeFilter') as HTMLSelectElement;
+  const locationSelect = container.querySelector('#sessionsLocationFilter') as HTMLSelectElement;
+  const dateRangeSelect = container.querySelector('#sessionsDateRangeFilter') as HTMLSelectElement;
+  const exportFormatSelect = container.querySelector('#sessionsExportFormat') as HTMLSelectElement;
+  const exportButton = container.querySelector('#sessionsExportButton') as HTMLButtonElement;
+  const body = container.querySelector('#sessionsGridBody') as HTMLDivElement;
+  const empty = container.querySelector('#sessionsEmpty') as HTMLParagraphElement;
+  const totalProfitEl = container.querySelector('#sessionsTotalProfit') as HTMLSpanElement;
+  const totalHoursEl = container.querySelector('#sessionsTotalHours') as HTMLSpanElement;
+  const profitPerHourEl = container.querySelector('#sessionsProfitPerHour') as HTMLSpanElement;
 
-        const durationMs = s.endedAt! - s.startedAt;
-        const hours = (durationMs / (1000 * 60 * 60)).toFixed(2);
+  typeSelect.value = filters.type;
+  locationSelect.value = filters.location;
+  dateRangeSelect.value = filters.dateRange;
+
+  const getActiveFilters = (): SessionsFilters => ({
+    type: (typeSelect.value as SessionFilterType) || 'all',
+    location: locationSelect.value,
+    dateRange: (dateRangeSelect.value as DateRangeFilter) || 'all'
+  });
+
+  const getFilteredSessions = (activeFilters: SessionsFilters): Session[] => {
+    return completed.filter(session => matchesFilters(session, activeFilters));
+  };
+
+  const renderRows = () => {
+    const activeFilters = getActiveFilters();
+    saveFilters(activeFilters);
+
+    const filtered = getFilteredSessions(activeFilters);
+
+    let totalProfit = 0;
+    let totalHours = 0;
+
+    if (filtered.length === 0) {
+      body.innerHTML = '';
+      empty.hidden = false;
+    } else {
+      empty.hidden = true;
+
+      body.innerHTML = filtered.map(session => {
+        const totals = calculateSessionTotals(session);
+        const hours = sessionHours(session);
+        totalProfit += totals.grossProfit;
+        totalHours += hours;
+
+        const profitClass = totals.grossProfit > 0
+          ? 'sessions-profit-positive'
+          : totals.grossProfit < 0
+            ? 'sessions-profit-negative'
+            : 'sessions-profit-neutral';
 
         return `
-          <div style="margin-bottom:10px;">
-            <strong>${s.mode === 'cash' ? 'Cash' : 'Tournament'}</strong> |
-            ${s.location} |
-            ${new Date(s.startedAt).toLocaleDateString()} |
-            ${hours} hrs |
-            $${(totals.grossProfit / 100).toFixed(2)}
+          <div class="sessions-grid sessions-grid-row">
+            <div class="sessions-profit ${profitClass}">${formatProfit(totals.grossProfit)}</div>
+            <div>${formatDate(session.startedAt)}</div>
+            <div>${formatHours(hours)}</div>
+            <div>${(session.location ?? '-')}</div>
+            <div>${session.mode === 'cash' ? 'Cash' : 'Tournament'}</div>
           </div>
         `;
       }).join('');
     }
-  }
+
+    const totalProfitClass = totalProfit > 0
+      ? 'sessions-profit-positive'
+      : totalProfit < 0
+        ? 'sessions-profit-negative'
+        : 'sessions-profit-neutral';
+
+    const profitPerHour = totalHours > 0 ? Math.round(totalProfit / totalHours) : 0;
+
+    totalProfitEl.className = `sessions-profit ${totalProfitClass}`;
+    totalProfitEl.textContent = formatProfit(totalProfit);
+    totalHoursEl.textContent = formatHours(totalHours);
+    profitPerHourEl.textContent = formatProfit(profitPerHour);
+
+    exportButton.disabled = filtered.length === 0;
+  };
+
+  exportButton.addEventListener('click', () => {
+    const activeFilters = getActiveFilters();
+    const filtered = getFilteredSessions(activeFilters);
+
+    if (filtered.length === 0) {
+      return;
+    }
+
+    const now = new Date().toISOString().replace(/[:.]/g, '-');
+    const format = (exportFormatSelect.value as ExportFormat) || 'json';
+
+    if (format === 'json') {
+      downloadTextFile(JSON.stringify(filtered, null, 2), `sessions-${now}.json`, 'application/json');
+      return;
+    }
+
+    downloadTextFile(buildSessionsCsv(filtered), `sessions-${now}.csv`, 'text/csv;charset=utf-8');
+  });
+
+  typeSelect.addEventListener('change', renderRows);
+  locationSelect.addEventListener('change', renderRows);
+  dateRangeSelect.addEventListener('change', renderRows);
+
+  renderRows();
+
   return container;
 }
