@@ -70,3 +70,16 @@ export function saveCashStartPreferences(input: {
   localStorage.setItem(CASH_START_PREFS_KEY, JSON.stringify(next));
   return next;
 }
+
+export function saveCashLocationPreference(location: string): CashStartPreferences {
+  const current = loadCashStartPreferences();
+
+  const next: CashStartPreferences = {
+    ...current,
+    lastLocation: location.trim(),
+    locations: uniqueRecent(current.locations, location)
+  };
+
+  localStorage.setItem(CASH_START_PREFS_KEY, JSON.stringify(next));
+  return next;
+}

@@ -3,25 +3,35 @@ import type { Session } from '../../models/session';
 import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
 
+function formatDuration(durationMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const hh = hours.toString().padStart(2, '0');
+  const mm = minutes.toString().padStart(2, '0');
+  const ss = seconds.toString().padStart(2, '0');
+
+  return days > 0 ? `${days}d ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+}
+
 export async function renderTournamentView(session: Session, service: SessionService): Promise<HTMLElement> {
-  // TODO verify session is tournament, show hours for duration
   const container = document.createElement('div');
   container.className = 'app-container';
   const start = session.startedAt;
   const totals = calculateSessionTotals(session);
-  const diff = Date.now() - start;
-  const min = Math.floor(diff / 60000);
-  const sec = Math.floor((diff % 60000) / 1000);
 
   container.innerHTML = `
       <h1>Active Tournament Session</h1>
       <p>Stakes: ${session.stakes ?? '-'}</p>
       <p>Location: ${session.location ?? '-'}</p>
-      <p>Duration: <span id="activeDuration">${min}:${sec.toString().padStart(2,'0')}</span></p>
+      <p>Duration: <span id="activeDuration">${formatDuration(Date.now() - start)}</span></p>
       <hr/>
       <p>Invested: $${(totals.invested / 100).toFixed(2)}</p>
       <p>Returned: $${(totals.returned / 100).toFixed(2)}</p>
-      <p>Expenses: $${(totals.expenses / 100).toFixed(2)}</p>      
+      <p>Expenses: $${(totals.expenses / 100).toFixed(2)}</p>
       <h2>Gross: $${(totals.grossProfit / 100).toFixed(2)}</h2>
       <h2>Net: $${(totals.netProfit / 100).toFixed(2)}</h2>
       <h2>ROI (Gross): ${((totals.roi ? totals.roi : 0) * 100).toFixed(1)} %</h2>
@@ -39,10 +49,7 @@ export async function renderTournamentView(session: Session, service: SessionSer
 
   const durationEl = container.querySelector('#activeDuration')!;
   setInterval(() => {
-    const diff = Date.now() - start;
-    const minutes = Math.floor(diff / 60000);
-    const seconds = Math.floor((diff % 60000) / 1000);
-    durationEl.textContent = `${minutes}:${seconds.toString().padStart(2,'0')}`;
+    durationEl.textContent = formatDuration(Date.now() - start);
   }, 1000);
 
   container.querySelector('#rebuy')!

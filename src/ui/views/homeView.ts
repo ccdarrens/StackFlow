@@ -2,8 +2,17 @@ import type { SessionService } from '../../services/sessionService';
 import { navigate } from '../router';
 import {
   loadCashStartPreferences,
+  saveCashLocationPreference,
   saveCashStartPreferences
 } from '../../storage/cashStartPreferences';
+import {
+  loadTournamentStartPreferences,
+  saveTournamentStartPreferences
+} from '../../storage/tournamentStartPreferences';
+
+const MAX_LOCATION_LENGTH = 30;
+const MAX_STAKES_LENGTH = 25;
+const MAX_BUY_IN_DOLLARS = 10000000;
 
 function pad2(value: number): string {
   return value.toString().padStart(2, '0');
@@ -30,7 +39,7 @@ function parseDollarsToCents(rawValue: string): number | null {
   }
 
   const amount = Number(normalized);
-  if (!Number.isFinite(amount) || amount < 0) {
+  if (!Number.isFinite(amount) || amount < 0 || amount > MAX_BUY_IN_DOLLARS) {
     return null;
   }
 
@@ -39,6 +48,49 @@ function parseDollarsToCents(rawValue: string): number | null {
 
 function formatDollarsFromCents(cents: number): string {
   return Number((cents / 100).toFixed(2)).toString();
+}
+
+function addPills(
+  host: HTMLDivElement,
+  values: string[],
+  onPick: (value: string) => void,
+  render?: (value: string) => string
+): void {
+  host.innerHTML = '';
+
+  for (const value of values) {
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'pill-btn';
+    pill.textContent = render ? render(value) : value;
+    pill.addEventListener('click', () => onPick(value));
+    host.appendChild(pill);
+  }
+}
+
+function attachSheetCloseHandlers(backdrop: HTMLDivElement, closeButton: HTMLButtonElement): () => void {
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      close();
+    }
+  };
+
+  const close = () => {
+    document.removeEventListener('keydown', onKeyDown);
+    backdrop.remove();
+  };
+
+  closeButton.addEventListener('click', close);
+
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) {
+      close();
+    }
+  });
+
+  document.addEventListener('keydown', onKeyDown);
+
+  return close;
 }
 
 function openCashStartSheet(service: SessionService): void {
@@ -55,11 +107,11 @@ function openCashStartSheet(service: SessionService): void {
         <input id="cashStartAt" type="datetime-local" required />
 
         <label for="cashLocation">Location</label>
-        <input id="cashLocation" type="text" placeholder="e.g. Stones" />
+        <input id="cashLocation" type="text" placeholder="e.g. Stones" maxlength="30" />
         <div id="cashLocationPills" class="pill-row"></div>
 
         <label for="cashStakes">Stakes</label>
-        <input id="cashStakes" type="text" placeholder="e.g. 1/3 NLH" />
+        <input id="cashStakes" type="text" placeholder="e.g. 1/3 NLH" maxlength="25" />
         <div id="cashStakesPills" class="pill-row"></div>
 
         <label for="cashBuyIn">Initial Buy-In ($)</label>
@@ -95,24 +147,6 @@ function openCashStartSheet(service: SessionService): void {
   stakesInput.value = prefs.lastStakes;
   buyInInput.value = prefs.lastBuyInDollars;
 
-  const addPills = (
-    host: HTMLDivElement,
-    values: string[],
-    onPick: (value: string) => void,
-    render?: (value: string) => string
-  ) => {
-    host.innerHTML = '';
-
-    for (const value of values) {
-      const pill = document.createElement('button');
-      pill.type = 'button';
-      pill.className = 'pill-btn';
-      pill.textContent = render ? render(value) : value;
-      pill.addEventListener('click', () => onPick(value));
-      host.appendChild(pill);
-    }
-  };
-
   addPills(locationPills, prefs.locations, value => {
     locationInput.value = value;
     locationInput.focus();
@@ -133,26 +167,7 @@ function openCashStartSheet(service: SessionService): void {
     value => `$${value}`
   );
 
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      close();
-    }
-  };
-
-  const close = () => {
-    document.removeEventListener('keydown', onKeyDown);
-    backdrop.remove();
-  };
-
-  cancelButton.addEventListener('click', close);
-
-  backdrop.addEventListener('click', event => {
-    if (event.target === backdrop) {
-      close();
-    }
-  });
-
-  document.addEventListener('keydown', onKeyDown);
+  const close = attachSheetCloseHandlers(backdrop, cancelButton);
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -168,10 +183,21 @@ function openCashStartSheet(service: SessionService): void {
 
     const location = locationInput.value.trim();
     const stakes = stakesInput.value.trim();
+
+    if (location.length > MAX_LOCATION_LENGTH) {
+      errorEl.textContent = 'Location must be 30 characters or fewer.';
+      return;
+    }
+
+    if (stakes.length > MAX_STAKES_LENGTH) {
+      errorEl.textContent = 'Stakes must be 25 characters or fewer.';
+      return;
+    }
+
     const buyInCents = parseDollarsToCents(buyInInput.value.trim());
 
     if (buyInCents === null) {
-      errorEl.textContent = 'Please enter a valid buy-in amount (example: 100 or 100.50).';
+      errorEl.textContent = 'Please enter a valid buy-in amount up to $10,000,000 (example: 100 or 100.50).';
       return;
     }
 
@@ -201,6 +227,141 @@ function openCashStartSheet(service: SessionService): void {
   });
 }
 
+function openTournamentStartSheet(service: SessionService): void {
+  const cashPrefs = loadCashStartPreferences();
+  const tournamentPrefs = loadTournamentStartPreferences();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+
+  backdrop.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="tournamentStartTitle">
+      <h2 id="tournamentStartTitle">Start Tournament</h2>
+      <form id="tournamentStartForm" class="sheet-form">
+        <label for="tournamentStartAt">Start Date & Time</label>
+        <input id="tournamentStartAt" type="datetime-local" required />
+
+        <label for="tournamentLocation">Location</label>
+        <input id="tournamentLocation" type="text" placeholder="e.g. Thunder Valley" maxlength="30" />
+        <div id="tournamentLocationPills" class="pill-row"></div>
+
+        <label for="tournamentStakes">Stakes</label>
+        <input id="tournamentStakes" type="text" placeholder="e.g. $150 MTT" maxlength="25" />
+        <div id="tournamentStakesPills" class="pill-row"></div>
+
+        <label for="tournamentBuyIn">Buy-In ($)</label>
+        <input id="tournamentBuyIn" type="text" inputmode="decimal" placeholder="e.g. 150" required />
+        <div id="tournamentBuyInPills" class="pill-row"></div>
+
+        <p id="tournamentStartError" class="sheet-error"></p>
+
+        <div class="sheet-actions">
+          <button type="button" id="cancelTournamentStart" class="ghost-btn">Cancel</button>
+          <button type="submit" id="submitTournamentStart">Start</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const form = backdrop.querySelector('#tournamentStartForm') as HTMLFormElement;
+  const startAtInput = backdrop.querySelector('#tournamentStartAt') as HTMLInputElement;
+  const locationInput = backdrop.querySelector('#tournamentLocation') as HTMLInputElement;
+  const stakesInput = backdrop.querySelector('#tournamentStakes') as HTMLInputElement;
+  const buyInInput = backdrop.querySelector('#tournamentBuyIn') as HTMLInputElement;
+  const locationPills = backdrop.querySelector('#tournamentLocationPills') as HTMLDivElement;
+  const stakesPills = backdrop.querySelector('#tournamentStakesPills') as HTMLDivElement;
+  const buyInPills = backdrop.querySelector('#tournamentBuyInPills') as HTMLDivElement;
+  const errorEl = backdrop.querySelector('#tournamentStartError') as HTMLParagraphElement;
+  const cancelButton = backdrop.querySelector('#cancelTournamentStart') as HTMLButtonElement;
+  const submitButton = backdrop.querySelector('#submitTournamentStart') as HTMLButtonElement;
+
+  startAtInput.value = formatDateTimeLocal(new Date());
+  locationInput.value = cashPrefs.lastLocation;
+  stakesInput.value = tournamentPrefs.lastStakes;
+  buyInInput.value = tournamentPrefs.lastBuyInDollars;
+
+  addPills(locationPills, cashPrefs.locations, value => {
+    locationInput.value = value;
+    locationInput.focus();
+  });
+
+  addPills(stakesPills, tournamentPrefs.stakes, value => {
+    stakesInput.value = value;
+    stakesInput.focus();
+  });
+
+  addPills(
+    buyInPills,
+    tournamentPrefs.buyIns,
+    value => {
+      buyInInput.value = value;
+      buyInInput.focus();
+    },
+    value => `$${value}`
+  );
+
+  const close = attachSheetCloseHandlers(backdrop, cancelButton);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    errorEl.textContent = '';
+
+    const startAt = startAtInput.value;
+    const startedAtMillis = startAt ? new Date(startAt).getTime() : Number.NaN;
+
+    if (!Number.isFinite(startedAtMillis)) {
+      errorEl.textContent = 'Please enter a valid start date and time.';
+      return;
+    }
+
+    const location = locationInput.value.trim();
+    const stakes = stakesInput.value.trim();
+
+    if (location.length > MAX_LOCATION_LENGTH) {
+      errorEl.textContent = 'Location must be 30 characters or fewer.';
+      return;
+    }
+
+    if (stakes.length > MAX_STAKES_LENGTH) {
+      errorEl.textContent = 'Stakes must be 25 characters or fewer.';
+      return;
+    }
+
+    const buyInCents = parseDollarsToCents(buyInInput.value.trim());
+
+    if (buyInCents === null) {
+      errorEl.textContent = 'Please enter a valid buy-in amount up to $10,000,000 (example: 100 or 100.50).';
+      return;
+    }
+
+    submitButton.disabled = true;
+
+    try {
+      await service.createTournamentSession(
+        stakes || undefined,
+        location || undefined,
+        buyInCents,
+        startedAtMillis
+      );
+
+      saveCashLocationPreference(location);
+      saveTournamentStartPreferences({
+        stakes,
+        buyInDollars: formatDollarsFromCents(buyInCents)
+      });
+
+      close();
+      navigate('start');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to start tournament.';
+      errorEl.textContent = message;
+      submitButton.disabled = false;
+    }
+  });
+}
+
 export async function renderHomeView(service: SessionService): Promise<HTMLElement> {
 
   const container = document.createElement('div');
@@ -220,9 +381,8 @@ export async function renderHomeView(service: SessionService): Promise<HTMLEleme
     });
 
   container.querySelector('#startTournament')!
-    .addEventListener('click', async () => {
-      await service.createTournamentSession('$150 MTT', 'Thunder Valley', 15000);
-      navigate('start');
+    .addEventListener('click', () => {
+      openTournamentStartSheet(service);
     });
 
   container.querySelector('#viewSessions')!
@@ -239,4 +399,3 @@ export async function renderHomeView(service: SessionService): Promise<HTMLEleme
 
   return container;
 }
-
