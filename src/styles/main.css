@@ -267,3 +267,128 @@ html, body {
 
 
 
+
+.tournament-card h1 {
+  margin: 0 0 12px;
+}
+
+.tournament-meta {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.tournament-meta p,
+.tournament-stats p {
+  margin: 0;
+}
+
+.tournament-stats {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(243, 239, 227, 0.18);
+  border-radius: 10px;
+  background: rgba(10, 31, 23, 0.65);
+  margin-bottom: 12px;
+}
+
+.tournament-emphasis {
+  font-weight: 700;
+}
+
+.session-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.session-action-btn,
+.session-end-btn {
+  background: #0a1f17;
+  border: 1px solid rgba(243, 239, 227, 0.22);
+  color: var(--ivory);
+  border-radius: 10px;
+  padding: 11px 12px;
+  cursor: pointer;
+}
+
+.session-end-btn {
+  width: 100%;
+  border-color: rgba(201, 162, 39, 0.6);
+}
+
+.cash-card h1 {
+  margin: 0 0 12px;
+}
+
+.cash-meta {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.cash-meta p,
+.cash-stats p {
+  margin: 0;
+}
+
+.cash-stats {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(243, 239, 227, 0.18);
+  border-radius: 10px;
+  background: rgba(10, 31, 23, 0.65);
+  margin-bottom: 12px;
+}
+
+.home-card {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.home-header {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.home-brand {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 3.2rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: transparent;
+  background: linear-gradient(120deg, #f3efe3 0%, #e8d08a 55%, #c9a227 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 4px 20px rgba(201, 162, 39, 0.35);
+}
+
+.home-logo {
+  width: min(320px, 70vw);
+  height: auto;
+  display: block;
+}
+
+.home-actions {
+  margin-top: 6px;
+}
+
+.home-actions-vertical {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+
+.home-actions-divider {
+  height: 1px;
+  background: linear-gradient(90deg, rgba(243,239,227,0.08) 0%, rgba(201,162,39,0.6) 50%, rgba(243,239,227,0.08) 100%);
+  margin: 2px 0;
+}
+

@@ -9,6 +9,7 @@ import {
   loadTournamentStartPreferences,
   saveTournamentStartPreferences
 } from '../../storage/tournamentStartPreferences';
+import logoTransparent from '../../logo-transparent-bg.png';
 
 const MAX_LOCATION_LENGTH = 30;
 const MAX_STAKES_LENGTH = 25;
@@ -368,11 +369,18 @@ export async function renderHomeView(service: SessionService): Promise<HTMLEleme
   container.className = 'app-container';
 
   container.innerHTML = `
-    <button id="startCash">Start Cash Game</button>
-    <button id="startTournament">Start Tournament</button>
-    <hr/>
-    <button id="viewSessions">View Sessions</button>
-    <button id="viewStats">View Stats</button>
+    <div class="sessions-card home-card">
+      <div class="home-header">
+        <h1 class="home-brand">Stack Flow</h1>
+        <img class="home-logo" src="${logoTransparent}" alt="Stack Flow logo" />
+      </div>
+
+      <div class="home-actions home-actions-vertical">
+        <button id="startCash" class="session-action-btn">Start Cash Game</button>
+        <button id="startTournament" class="session-action-btn">Start Tournament</button>
+        <button id="viewSessions" class="session-action-btn">View Sessions</button>
+      </div>
+    </div>
   `;
 
   container.querySelector('#startCash')!
@@ -391,11 +399,6 @@ export async function renderHomeView(service: SessionService): Promise<HTMLEleme
       navigate('sessions');
     });
 
-  container.querySelector('#viewStats')!
-    .addEventListener('click', async () => {
-      console.log('veiw stats clicked');
-      navigate('stats');
-    });
-
   return container;
 }
+

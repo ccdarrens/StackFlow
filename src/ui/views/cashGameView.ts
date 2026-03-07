@@ -322,16 +322,23 @@ export async function renderCashGameView(session: Session, service: SessionServi
   const totals = calculateSessionTotals(session);
 
   container.innerHTML = `
-      <h1>Active Cash Session</h1>
-      <p>${session.stakes ?? '-'} @ ${session.location ?? '-'}</p>
-      <p>Duration: <span id="activeDuration">${formatDuration(Date.now() - start)}</span></p>
-      <p>Invested: $${(totals.invested / 100).toFixed(2)}</p>
-      <p>Expenses: $${(totals.expenses / 100).toFixed(2)}</p>
-      <hr/>
-      <div id="actions">
-        <button id="addon">Addon</button>
-        <button id="expense">Expense</button>
-        <button id="endSession">End Session</button>
+      <div class="sessions-card cash-card">
+        <h1>Active Cash Session</h1>
+        <div class="cash-meta">
+          <p>${session.stakes ?? '-'} @ ${session.location ?? '-'}</p>
+          <p><strong>Duration:</strong> <span id="activeDuration">${formatDuration(Date.now() - start)}</span></p>
+        </div>
+
+        <div class="cash-stats">
+          <p>Invested: $${(totals.invested / 100).toFixed(2)}</p>
+          <p>Expenses: $${(totals.expenses / 100).toFixed(2)}</p>
+        </div>
+
+        <div id="actions" class="session-actions-grid">
+          <button id="addon" class="session-action-btn">Addon</button>
+          <button id="expense" class="session-action-btn">Expense</button>
+        </div>
+        <button id="endSession" class="session-end-btn">End Session</button>
       </div>
   `;
 
