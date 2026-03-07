@@ -272,7 +272,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         </div>
 
         <div class="sessions-filter-export">
-          <button id="sessionsExportMenuButton" class="sessions-export-icon-btn" type="button" aria-label="Export sessions">?</button>
+          <button id="sessionsExportMenuButton" class="sessions-export-icon-btn" type="button" aria-label="Export sessions">&#8595;</button>
           <div id="sessionsExportMenu" class="sessions-export-menu" hidden>
             <button type="button" data-format="json">JSON</button>
             <button type="button" data-format="csv">CSV</button>
@@ -333,6 +333,20 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         </div>
       </div>
 
+      <div id="sessionsTournamentItmCard" class="sessions-chart-card" hidden>
+        <h3>Tournament In-the-Money %</h3>
+        <div class="sessions-chart-wrap sessions-chart-wrap-small">
+          <canvas id="sessionsTournamentItmChart"></canvas>
+        </div>
+      </div>
+
+      <div id="sessionsTournamentRoiByBuyinCard" class="sessions-chart-card" hidden>
+        <h3>Tournament ROI by Buy-in Level</h3>
+        <div class="sessions-chart-wrap">
+          <canvas id="sessionsTournamentRoiByBuyinChart"></canvas>
+        </div>
+      </div>
+
       <p id="sessionsEmpty" class="sessions-empty" hidden>No sessions found for the selected filters.</p>
     </div>
   `;
@@ -348,6 +362,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const empty = container.querySelector('#sessionsEmpty') as HTMLParagraphElement;
   const cumulativeCanvas = container.querySelector('#sessionsCumulativeChart') as HTMLCanvasElement;
   const dayOfWeekCanvas = container.querySelector('#sessionsDayOfWeekChart') as HTMLCanvasElement;
+  const itmCard = container.querySelector('#sessionsTournamentItmCard') as HTMLDivElement;
+  const itmCanvas = container.querySelector('#sessionsTournamentItmChart') as HTMLCanvasElement;
+  const roiByBuyinCard = container.querySelector('#sessionsTournamentRoiByBuyinCard') as HTMLDivElement;
+  const roiByBuyinCanvas = container.querySelector('#sessionsTournamentRoiByBuyinChart') as HTMLCanvasElement;
   const grossProfitEl = container.querySelector('#sessionsGrossProfit') as HTMLSpanElement;
   const netProfitEl = container.querySelector('#sessionsNetProfit') as HTMLSpanElement;
   const expensesEl = container.querySelector('#sessionsExpenses') as HTMLSpanElement;
@@ -357,6 +375,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   let cumulativeChart: Chart | null = null;
   let dayOfWeekChart: Chart | null = null;
+  let itmChart: Chart | null = null;
+  let roiByBuyinChart: Chart | null = null;
 
   const getActiveFilters = (): SessionsFilters => ({
     type: (typeSelect.value as SessionFilterType) || 'all',
@@ -536,6 +556,177 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     dayOfWeekChart.update();
   };
 
+  const updateTournamentItmChart = (sessions: Session[]) => {
+    const tournaments = sessions.filter(session => session.mode === 'tournament');
+
+    if (tournaments.length === 0) {
+      itmCard.hidden = true;
+
+      if (itmChart) {
+        itmChart.destroy();
+        itmChart = null;
+      }
+      return;
+    }
+
+    itmCard.hidden = false;
+
+    let inTheMoneyCount = 0;
+
+    for (const session of tournaments) {
+      const totals = calculateSessionTotals(session);
+      if (totals.returned > 0) {
+        inTheMoneyCount += 1;
+      }
+    }
+
+    const notInTheMoneyCount = tournaments.length - inTheMoneyCount;
+    const inTheMoneyPercent = (inTheMoneyCount / tournaments.length) * 100;
+    const notInTheMoneyPercent = (notInTheMoneyCount / tournaments.length) * 100;
+
+    const chartData = [
+      Number(inTheMoneyPercent.toFixed(1)),
+      Number(notInTheMoneyPercent.toFixed(1))
+    ];
+
+    if (!itmChart) {
+      itmChart = new Chart(itmCanvas, {
+        type: 'pie',
+        data: {
+          labels: ['In the Money', 'Not in the Money'],
+          datasets: [
+            {
+              data: chartData,
+              backgroundColor: ['#7fd78f', '#8d8d8d'],
+              borderColor: ['#7fd78f', '#8d8d8d'],
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                color: '#F3EFE3'
+              }
+            }
+          }
+        }
+      });
+      return;
+    }
+
+    itmChart.data.datasets[0].data = chartData;
+    itmChart.update();
+  };
+
+
+  const updateTournamentRoiByBuyinChart = (sessions: Session[]) => {
+    const tournaments = sessions.filter(session => session.mode === 'tournament');
+    const grouped = new Map<number, { grossProfit: number; netProfit: number; invested: number }>();
+
+    for (const session of tournaments) {
+      const investments = session.events
+        .filter(event => event.type === 'investment' && event.amount > 0)
+        .slice()
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      const buyInLevelCents = investments[0]?.amount;
+      if (!buyInLevelCents) {
+        continue;
+      }
+
+      const totals = calculateSessionTotals(session);
+      if (totals.invested <= 0) {
+        continue;
+      }
+
+      const existing = grouped.get(buyInLevelCents) ?? { grossProfit: 0, netProfit: 0, invested: 0 };
+      existing.grossProfit += totals.grossProfit;
+      existing.netProfit += totals.netProfit;
+      existing.invested += totals.invested;
+      grouped.set(buyInLevelCents, existing);
+    }
+
+    if (grouped.size === 0) {
+      roiByBuyinCard.hidden = true;
+      if (roiByBuyinChart) {
+        roiByBuyinChart.destroy();
+        roiByBuyinChart = null;
+      }
+      return;
+    }
+
+    roiByBuyinCard.hidden = false;
+
+    const levels = Array.from(grouped.keys()).sort((a, b) => a - b);
+    const labels = levels.map(level => formatMoney(level));
+    const grossRoi = levels.map(level => {
+      const data = grouped.get(level)!;
+      return data.invested > 0 ? Number(((data.grossProfit / data.invested) * 100).toFixed(2)) : 0;
+    });
+    const netRoi = levels.map(level => {
+      const data = grouped.get(level)!;
+      return data.invested > 0 ? Number(((data.netProfit / data.invested) * 100).toFixed(2)) : 0;
+    });
+
+    if (!roiByBuyinChart) {
+      roiByBuyinChart = new Chart(roiByBuyinCanvas, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Gross ROI %',
+              data: grossRoi,
+              backgroundColor: 'rgba(127, 215, 143, 0.75)',
+              borderColor: '#7fd78f',
+              borderWidth: 1
+            },
+            {
+              label: 'Net ROI %',
+              data: netRoi,
+              backgroundColor: 'rgba(201, 162, 39, 0.75)',
+              borderColor: '#c9a227',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                color: '#F3EFE3'
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            },
+            y: {
+              ticks: {
+                color: '#F3EFE3',
+                callback: value => `${value}%`
+              },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            }
+          }
+        }
+      });
+      return;
+    }
+
+    roiByBuyinChart.data.labels = labels;
+    roiByBuyinChart.data.datasets[0].data = grossRoi;
+    roiByBuyinChart.data.datasets[1].data = netRoi;
+    roiByBuyinChart.update();
+  };
   typeSelect.value = filters.type;
   locationSelect.value = filters.location;
   dateRangeSelect.value = filters.dateRange;
@@ -553,6 +744,11 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     if (dayOfWeekChart) {
       dayOfWeekChart.destroy();
       dayOfWeekChart = null;
+    }
+
+    if (itmChart) {
+      itmChart.destroy();
+      itmChart = null;
     }
 
     navigate('start');
@@ -634,6 +830,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
     updateCumulativeChart(filtered);
     updateDayOfWeekChart(filtered);
+    updateTournamentItmChart(filtered);
+    updateTournamentRoiByBuyinChart(filtered);
   };
 
   typeSelect.addEventListener('change', renderRows);
@@ -644,3 +842,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
+
+
