@@ -6,7 +6,6 @@ let listener: RouteListener | null = null;
 
 function parseHash(): Route {
   const hash =  window.location.hash.slice(1);
-  console.log('parsed hash:', hash);
   switch (hash) {
     case 'sessions': return 'sessions';
     case 'stats':    return 'stats';
@@ -42,3 +41,5 @@ export function navigate(route: Route) {
 export function getCurrentRoute(): Route {
   return parseHash();
 }
+
+

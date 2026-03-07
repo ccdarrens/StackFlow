@@ -1167,7 +1167,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     });
   }
 
-  document.addEventListener('click', hideExportMenu);
+  container.addEventListener('click', hideExportMenu);
 
   const renderRows = () => {
     const activeFilters = getActiveFilters();
@@ -1287,6 +1287,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
 
 
 

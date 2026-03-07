@@ -10,7 +10,6 @@ export async function renderApp(route: Route, service: SessionService) {
   const root = document.getElementById('app');
   if (!root) return;
 
-  console.log('current route:', route);
   root.innerHTML = '';  // clear page
 
   switch (route) {
@@ -26,3 +25,4 @@ export async function renderApp(route: Route, service: SessionService) {
       root.appendChild(await renderStartView(service));
   }
 }
+

@@ -6,11 +6,9 @@ import { renderTournamentView } from './tournamentView';
 export async function renderStartView(service: SessionService): Promise<HTMLElement> {
 
   const session = await service.getActiveSession();
-  console.log('session', session);
   
   if (!session) {
     const el = await renderHomeView(service);
-    console.log('No active session found', el);
     return el;
   } else if (session.mode == 'cash') {
     const el = await renderCashGameView(session, service);
@@ -23,3 +21,4 @@ export async function renderStartView(service: SessionService): Promise<HTMLElem
   }
 
 }
+

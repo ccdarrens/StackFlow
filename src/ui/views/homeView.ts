@@ -10,42 +10,11 @@ import {
   saveTournamentStartPreferences
 } from '../../storage/tournamentStartPreferences';
 import logoTransparent from '../../logo-transparent-bg.png';
+import { attachSheetCloseHandlers, formatDateTimeLocal, parseDollarsToCents } from '../viewHelpers';
 
 const MAX_LOCATION_LENGTH = 30;
 const MAX_STAKES_LENGTH = 25;
 const MAX_BUY_IN_DOLLARS = 10000000;
-
-function pad2(value: number): string {
-  return value.toString().padStart(2, '0');
-}
-
-function formatDateTimeLocal(now: Date): string {
-  const year = now.getFullYear();
-  const month = pad2(now.getMonth() + 1);
-  const day = pad2(now.getDate());
-  const hours = pad2(now.getHours());
-  const minutes = pad2(now.getMinutes());
-
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-function parseDollarsToCents(rawValue: string): number | null {
-  const normalized = rawValue.replace(/[$,\s]/g, '');
-  if (!normalized) {
-    return null;
-  }
-
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
-    return null;
-  }
-
-  const amount = Number(normalized);
-  if (!Number.isFinite(amount) || amount < 0 || amount > MAX_BUY_IN_DOLLARS) {
-    return null;
-  }
-
-  return Math.round(amount * 100);
-}
 
 function formatDollarsFromCents(cents: number): string {
   return Number((cents / 100).toFixed(2)).toString();
@@ -67,31 +36,6 @@ function addPills(
     pill.addEventListener('click', () => onPick(value));
     host.appendChild(pill);
   }
-}
-
-function attachSheetCloseHandlers(backdrop: HTMLDivElement, closeButton: HTMLButtonElement): () => void {
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      close();
-    }
-  };
-
-  const close = () => {
-    document.removeEventListener('keydown', onKeyDown);
-    backdrop.remove();
-  };
-
-  closeButton.addEventListener('click', close);
-
-  backdrop.addEventListener('click', event => {
-    if (event.target === backdrop) {
-      close();
-    }
-  });
-
-  document.addEventListener('keydown', onKeyDown);
-
-  return close;
 }
 
 function openCashStartSheet(service: SessionService): void {
@@ -195,7 +139,7 @@ function openCashStartSheet(service: SessionService): void {
       return;
     }
 
-    const buyInCents = parseDollarsToCents(buyInInput.value.trim());
+    const buyInCents = parseDollarsToCents(buyInInput.value.trim(), true, MAX_BUY_IN_DOLLARS);
 
     if (buyInCents === null) {
       errorEl.textContent = 'Please enter a valid buy-in amount up to $10,000,000 (example: 100 or 100.50).';
@@ -330,7 +274,7 @@ function openTournamentStartSheet(service: SessionService): void {
       return;
     }
 
-    const buyInCents = parseDollarsToCents(buyInInput.value.trim());
+    const buyInCents = parseDollarsToCents(buyInInput.value.trim(), true, MAX_BUY_IN_DOLLARS);
 
     if (buyInCents === null) {
       errorEl.textContent = 'Please enter a valid buy-in amount up to $10,000,000 (example: 100 or 100.50).';
@@ -395,10 +339,13 @@ export async function renderHomeView(service: SessionService): Promise<HTMLEleme
 
   container.querySelector('#viewSessions')!
     .addEventListener('click', async () => {
-      console.log('veiw sessions clicked');
       navigate('sessions');
     });
 
   return container;
 }
+
+
+
+
 

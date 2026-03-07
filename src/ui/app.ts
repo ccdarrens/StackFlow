@@ -7,14 +7,8 @@ import type { Route } from './router';
 const repository = new LocalStorageRepository();
 const service = new DefaultSessionService(repository);
 
-export async function initApp() {
-  console.log('app init');
-}
-
-function bootstrap() {
+export function initApp() {
   initRouter((route: Route) => {
     renderApp(route, service);
   });
 }
-bootstrap();
-
