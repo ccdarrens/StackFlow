@@ -241,14 +241,6 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         <h2>Past Sessions</h2>
       </div>
 
-      <div class="sessions-toolbar">
-        <select id="sessionsExportFormat">
-          <option value="json">JSON</option>
-          <option value="csv">CSV</option>
-        </select>
-        <button id="sessionsExportButton" type="button">Export Filtered Sessions</button>
-      </div>
-
       <div class="sessions-filters">
         <div class="sessions-filter-field">
           <label for="sessionsTypeFilter">Type</label>
@@ -277,6 +269,14 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
             <option value="last_year">Last Year</option>
             <option value="year_to_date">Year to Date</option>
           </select>
+        </div>
+
+        <div class="sessions-filter-export">
+          <button id="sessionsExportMenuButton" class="sessions-export-icon-btn" type="button" aria-label="Export sessions">?</button>
+          <div id="sessionsExportMenu" class="sessions-export-menu" hidden>
+            <button type="button" data-format="json">JSON</button>
+            <button type="button" data-format="csv">CSV</button>
+          </div>
         </div>
       </div>
 
@@ -341,8 +341,9 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const typeSelect = container.querySelector('#sessionsTypeFilter') as HTMLSelectElement;
   const locationSelect = container.querySelector('#sessionsLocationFilter') as HTMLSelectElement;
   const dateRangeSelect = container.querySelector('#sessionsDateRangeFilter') as HTMLSelectElement;
-  const exportFormatSelect = container.querySelector('#sessionsExportFormat') as HTMLSelectElement;
-  const exportButton = container.querySelector('#sessionsExportButton') as HTMLButtonElement;
+  const exportMenuButton = container.querySelector('#sessionsExportMenuButton') as HTMLButtonElement;
+  const exportMenu = container.querySelector('#sessionsExportMenu') as HTMLDivElement;
+  const exportMenuItems = Array.from(container.querySelectorAll('#sessionsExportMenu button')) as HTMLButtonElement[];
   const body = container.querySelector('#sessionsGridBody') as HTMLDivElement;
   const empty = container.querySelector('#sessionsEmpty') as HTMLParagraphElement;
   const cumulativeCanvas = container.querySelector('#sessionsCumulativeChart') as HTMLCanvasElement;
@@ -356,6 +357,32 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   let cumulativeChart: Chart | null = null;
   let dayOfWeekChart: Chart | null = null;
+
+  const getActiveFilters = (): SessionsFilters => ({
+    type: (typeSelect.value as SessionFilterType) || 'all',
+    location: locationSelect.value,
+    dateRange: (dateRangeSelect.value as DateRangeFilter) || 'all'
+  });
+
+  const getFilteredSessions = (activeFilters: SessionsFilters): Session[] => {
+    return completed.filter(session => matchesFilters(session, activeFilters));
+  };
+
+  const runExport = (format: ExportFormat) => {
+    const filtered = getFilteredSessions(getActiveFilters());
+    if (filtered.length === 0) {
+      return;
+    }
+
+    const now = new Date().toISOString().replace(/[:.]/g, '-');
+
+    if (format === 'json') {
+      downloadTextFile(JSON.stringify(filtered, null, 2), `sessions-${now}.json`, 'application/json');
+      return;
+    }
+
+    downloadTextFile(buildSessionsCsv(filtered), `sessions-${now}.csv`, 'text/csv;charset=utf-8');
+  };
 
   const updateCumulativeChart = (sessions: Session[]) => {
     const chronological = sessions.slice().sort((a, b) => a.startedAt - b.startedAt);
@@ -513,6 +540,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   locationSelect.value = filters.location;
   dateRangeSelect.value = filters.dateRange;
 
+  const hideExportMenu = () => {
+    exportMenu.hidden = true;
+  };
+
   backButton.addEventListener('click', () => {
     if (cumulativeChart) {
       cumulativeChart.destroy();
@@ -527,15 +558,24 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     navigate('start');
   });
 
-  const getActiveFilters = (): SessionsFilters => ({
-    type: (typeSelect.value as SessionFilterType) || 'all',
-    location: locationSelect.value,
-    dateRange: (dateRangeSelect.value as DateRangeFilter) || 'all'
+  exportMenuButton.addEventListener('click', event => {
+    event.stopPropagation();
+    exportMenu.hidden = !exportMenu.hidden;
   });
 
-  const getFilteredSessions = (activeFilters: SessionsFilters): Session[] => {
-    return completed.filter(session => matchesFilters(session, activeFilters));
-  };
+  exportMenu.addEventListener('click', event => {
+    event.stopPropagation();
+  });
+
+  for (const item of exportMenuItems) {
+    item.addEventListener('click', () => {
+      const format = (item.dataset.format as ExportFormat | undefined) ?? 'json';
+      hideExportMenu();
+      runExport(format);
+    });
+  }
+
+  document.addEventListener('click', hideExportMenu);
 
   const renderRows = () => {
     const activeFilters = getActiveFilters();
@@ -590,30 +630,11 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     grossPerHourEl.textContent = formatMoney(grossPerHour);
     netPerHourEl.textContent = formatMoney(netPerHour);
 
-    exportButton.disabled = filtered.length === 0;
+    exportMenuButton.disabled = filtered.length === 0;
 
     updateCumulativeChart(filtered);
     updateDayOfWeekChart(filtered);
   };
-
-  exportButton.addEventListener('click', () => {
-    const activeFilters = getActiveFilters();
-    const filtered = getFilteredSessions(activeFilters);
-
-    if (filtered.length === 0) {
-      return;
-    }
-
-    const now = new Date().toISOString().replace(/[:.]/g, '-');
-    const format = (exportFormatSelect.value as ExportFormat) || 'json';
-
-    if (format === 'json') {
-      downloadTextFile(JSON.stringify(filtered, null, 2), `sessions-${now}.json`, 'application/json');
-      return;
-    }
-
-    downloadTextFile(buildSessionsCsv(filtered), `sessions-${now}.csv`, 'text/csv;charset=utf-8');
-  });
 
   typeSelect.addEventListener('change', renderRows);
   locationSelect.addEventListener('change', renderRows);

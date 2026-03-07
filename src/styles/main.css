@@ -410,3 +410,58 @@ html, body {
   height: 280px;
 }
 
+
+.sessions-filter-export {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.sessions-export-icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid rgba(243, 239, 227, 0.25);
+  background: #0a1f17;
+  color: var(--ivory);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.sessions-export-icon-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sessions-export-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  display: grid;
+  min-width: 120px;
+  border: 1px solid rgba(243, 239, 227, 0.25);
+  border-radius: 8px;
+  background: #0a1f17;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+  z-index: 5;
+}
+
+.sessions-export-menu button {
+  background: transparent;
+  border: 0;
+  color: var(--ivory);
+  text-align: left;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+.sessions-export-menu button:hover {
+  background: rgba(201, 162, 39, 0.16);
+}
+
+.sessions-export-menu[hidden] {
+  display: none;
+}
+
