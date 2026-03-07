@@ -65,6 +65,29 @@ function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
+function pad2(value: number): string {
+  return value.toString().padStart(2, '0');
+}
+
+function formatDateTimeLocal(value: number): string {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const hours = pad2(date.getHours());
+  const minutes = pad2(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .split('&').join('&amp;')
+    .split('<').join('&lt;')
+    .split('>').join('&gt;')
+    .split('"').join('&quot;')
+    .split("'").join('&#39;');
+}
+
 function sessionHours(session: Session): number {
   if (!session.endedAt || session.endedAt <= session.startedAt) {
     return 0;
@@ -134,6 +157,7 @@ function matchesFilters(session: Session, filters: SessionsFilters): boolean {
   return true;
 }
 
+
 function collectLocations(sessions: Session[]): string[] {
   const seen = new Set<string>();
   const locations: string[] = [];
@@ -154,6 +178,27 @@ function collectLocations(sessions: Session[]): string[] {
   }
 
   return locations.sort((a, b) => a.localeCompare(b));
+}
+function collectStakes(sessions: Session[]): string[] {
+  const seen = new Set<string>();
+  const stakes: string[] = [];
+
+  for (const session of sessions) {
+    const value = (session.stakes ?? '').trim();
+    if (!value) {
+      continue;
+    }
+
+    const key = value.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    stakes.push(value);
+  }
+
+  return stakes.sort((a, b) => a.localeCompare(b));
 }
 
 function csvCell(value: string | number | undefined): string {
@@ -220,7 +265,7 @@ function downloadTextFile(content: string, fileName: string, mimeType: string): 
 }
 
 export async function renderSessionsView(service: SessionService): Promise<HTMLElement> {
-  const completed = (await service.getCompletedSessions())
+  let completed = (await service.getCompletedSessions())
     .slice()
     .sort((a, b) => b.startedAt - a.startedAt);
 
@@ -910,6 +955,159 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     roiByBuyinChart.data.datasets[1].data = netRoi;
     roiByBuyinChart.update();
   };
+
+  const openSessionEditSheet = (session: Session) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'sheet-backdrop';
+
+    const eventItems = session.events
+      .slice()
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(event => {
+        const label = `${event.type} ${formatMoney(event.amount)} @ ${new Date(event.timestamp).toLocaleString()}`;
+        const extras = [event.category ? `category: ${event.category}` : '', event.note ? `note: ${event.note}` : '']
+          .filter(Boolean)
+          .join(' | ');
+        return `<li><span>${escapeHtml(label)}</span>${extras ? `<br /><small>${escapeHtml(extras)}</small>` : ''}</li>`;
+      })
+      .join('');
+
+    const locationPills = collectLocations(completed)
+      .map(value => `<button type="button" class="pill-btn" data-location-pill="${escapeHtml(value)}">${escapeHtml(value)}</button>`)
+      .join('');
+    const stakesPills = collectStakes(completed.filter(item => item.mode === session.mode))
+      .map(value => `<button type="button" class="pill-btn" data-stakes-pill="${escapeHtml(value)}">${escapeHtml(value)}</button>`)
+      .join('');
+    const modeLabel = session.mode === 'cash' ? 'Cash' : 'Tournament';
+
+    backdrop.innerHTML = `
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sessionEditTitle">
+        <h2 id="sessionEditTitle">Edit ${modeLabel} Session</h2>
+        <form id="sessionEditForm" class="sheet-form">
+          <label for="sessionEditStakes">Stakes</label>
+          <input id="sessionEditStakes" type="text" maxlength="25" value="${escapeHtml(session.stakes ?? '')}" />
+          ${stakesPills ? `<div class="pill-row">${stakesPills}</div>` : ''}
+
+          <label for="sessionEditLocation">Location</label>
+          <input id="sessionEditLocation" type="text" maxlength="30" value="${escapeHtml(session.location ?? '')}" />
+          ${locationPills ? `<div class="pill-row">${locationPills}</div>` : ''}
+
+          <label for="sessionEditStartedAt">Start Date/Time</label>
+          <input id="sessionEditStartedAt" type="datetime-local" required value="${formatDateTimeLocal(session.startedAt)}" />
+
+          <label for="sessionEditEndedAt">End Date/Time</label>
+          <input id="sessionEditEndedAt" type="datetime-local" required value="${session.endedAt ? formatDateTimeLocal(session.endedAt) : ''}" />
+
+          <label>Events (Read-only)</label>
+          <div class="session-edit-events">${eventItems ? `<ul>${eventItems}</ul>` : '<p>No events</p>'}</div>
+
+          <p id="sessionEditError" class="sheet-error"></p>
+
+          <div class="sheet-actions">
+            <button id="sessionDeleteBtn" type="button" class="ghost-btn">Delete</button>
+            <button id="sessionEditCancel" type="button" class="ghost-btn">Cancel</button>
+            <button type="submit" class="session-end-btn">Update</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    container.appendChild(backdrop);
+
+    const form = backdrop.querySelector('#sessionEditForm') as HTMLFormElement;
+    const stakesInput = backdrop.querySelector('#sessionEditStakes') as HTMLInputElement;
+    const locationInput = backdrop.querySelector('#sessionEditLocation') as HTMLInputElement;
+    const startedAtInput = backdrop.querySelector('#sessionEditStartedAt') as HTMLInputElement;
+    const endedAtInput = backdrop.querySelector('#sessionEditEndedAt') as HTMLInputElement;
+    const errorEl = backdrop.querySelector('#sessionEditError') as HTMLParagraphElement;
+    const cancelBtn = backdrop.querySelector('#sessionEditCancel') as HTMLButtonElement;
+    const deleteBtn = backdrop.querySelector('#sessionDeleteBtn') as HTMLButtonElement;
+    const locationPillButtons = Array.from(backdrop.querySelectorAll('[data-location-pill]')) as HTMLButtonElement[];
+    const stakesPillButtons = Array.from(backdrop.querySelectorAll('[data-stakes-pill]')) as HTMLButtonElement[];
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        close();
+      }
+    };
+
+    const close = () => {
+      document.removeEventListener('keydown', onKeyDown);
+      backdrop.remove();
+    };
+
+    cancelBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', event => {
+      if (event.target === backdrop) {
+        close();
+      }
+    });
+    document.addEventListener('keydown', onKeyDown);
+
+    for (const pill of locationPillButtons) {
+      pill.addEventListener('click', () => {
+        locationInput.value = pill.dataset.locationPill ?? '';
+      });
+    }
+
+    for (const pill of stakesPillButtons) {
+      pill.addEventListener('click', () => {
+        stakesInput.value = pill.dataset.stakesPill ?? '';
+      });
+    }
+
+    deleteBtn.addEventListener('click', async () => {
+      errorEl.textContent = '';
+      const confirmed = window.confirm('Delete this session record? This cannot be undone.');
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await service.deleteSessionRecord(session.id);
+        close();
+        navigate('sessions');
+      } catch (error) {
+        errorEl.textContent = error instanceof Error ? error.message : 'Failed to delete session';
+      }
+    });
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      errorEl.textContent = '';
+
+      const startedAt = startedAtInput.value ? new Date(startedAtInput.value).getTime() : Number.NaN;
+      const endedAt = endedAtInput.value ? new Date(endedAtInput.value).getTime() : Number.NaN;
+
+      if (!Number.isFinite(startedAt)) {
+        errorEl.textContent = 'Enter a valid start date/time';
+        return;
+      }
+
+      if (!Number.isFinite(endedAt)) {
+        errorEl.textContent = 'Enter a valid end date/time';
+        return;
+      }
+
+      if (endedAt < startedAt) {
+        errorEl.textContent = 'End date/time must be after start date/time';
+        return;
+      }
+
+      try {
+        await service.updateSessionRecord(session.id, {
+          stakes: stakesInput.value.trim(),
+          location: locationInput.value.trim(),
+          startedAt,
+          endedAt
+        });
+        close();
+        navigate('sessions');
+      } catch (error) {
+        errorEl.textContent = error instanceof Error ? error.message : 'Failed to update session';
+      }
+    });
+  };
   typeSelect.value = filters.type;
   locationSelect.value = filters.location;
   dateRangeSelect.value = filters.dateRange;
@@ -998,7 +1196,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         totalHours += hours;
 
         return `
-          <div class="sessions-grid sessions-grid-row">
+          <div class="sessions-grid sessions-grid-row sessions-grid-row-clickable" data-session-id="${session.id}" role="button" tabindex="0" aria-label="Edit session ${session.id}">
             <div class="sessions-profit ${profitClass(totals.grossProfit)}">${formatMoney(totals.grossProfit)}</div>
             <div>${formatDate(session.startedAt)}</div>
             <div>${formatHours(hours)}</div>
@@ -1034,6 +1232,53 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     updateTournamentRoiByBuyinChart(filtered);
   };
 
+
+  body.addEventListener('click', event => {
+    const target = event.target as HTMLElement;
+    const row = target.closest('.sessions-grid-row-clickable') as HTMLDivElement | null;
+    if (!row) {
+      return;
+    }
+
+    const sessionId = row.dataset.sessionId;
+    if (!sessionId) {
+      return;
+    }
+
+    const session = completed.find(item => item.id === sessionId);
+    if (!session) {
+      return;
+    }
+
+    openSessionEditSheet(session);
+  });
+
+  body.addEventListener('keydown', event => {
+    const keyboardEvent = event as KeyboardEvent;
+    if (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ') {
+      return;
+    }
+
+    const target = keyboardEvent.target as HTMLElement;
+    const row = target.closest('.sessions-grid-row-clickable') as HTMLDivElement | null;
+    if (!row) {
+      return;
+    }
+
+    keyboardEvent.preventDefault();
+
+    const sessionId = row.dataset.sessionId;
+    if (!sessionId) {
+      return;
+    }
+
+    const session = completed.find(item => item.id === sessionId);
+    if (!session) {
+      return;
+    }
+
+    openSessionEditSheet(session);
+  });
   typeSelect.addEventListener('change', renderRows);
   locationSelect.addEventListener('change', renderRows);
   dateRangeSelect.addEventListener('change', renderRows);
@@ -1042,6 +1287,14 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
+
+
+
+
+
+
 
 
 

@@ -24,6 +24,10 @@ export interface SessionService {
   getAllSessions(): Promise<Session[]>;
 
   getCompletedSessions(): Promise<Session[]>;
+
+  updateSessionRecord(sessionId: string, updates: { stakes?: string; location?: string; startedAt?: number; endedAt?: number | undefined }): Promise<Session>;
+
+  deleteSessionRecord(sessionId: string): Promise<void>;
 }
 
 export class DefaultSessionService implements SessionService {
@@ -197,7 +201,55 @@ export class DefaultSessionService implements SessionService {
 
     return session;
   }
+  async updateSessionRecord(
+    sessionId: string,
+    updates: { stakes?: string; location?: string; startedAt?: number; endedAt?: number | undefined }
+  ): Promise<Session> {
+    const session = await this.repository.getSessionById(sessionId);
 
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    const next: Session = { ...session };
+
+    if (updates.stakes !== undefined) {
+      const stakes = updates.stakes.trim();
+      next.stakes = stakes ? stakes : undefined;
+    }
+
+    if (updates.location !== undefined) {
+      const location = updates.location.trim();
+      next.location = location ? location : undefined;
+    }
+
+    if (updates.startedAt !== undefined) {
+      if (!Number.isFinite(updates.startedAt) || updates.startedAt <= 0) {
+        throw new Error('Invalid start date/time');
+      }
+      next.startedAt = updates.startedAt;
+    }
+
+    if (updates.endedAt !== undefined) {
+      if (!Number.isFinite(updates.endedAt) || updates.endedAt <= 0) {
+        throw new Error('Invalid end date/time');
+      }
+      next.endedAt = updates.endedAt;
+    }
+
+    if (next.endedAt !== undefined && next.endedAt < next.startedAt) {
+      throw new Error('End date/time must be after start date/time');
+    }
+
+    next.updatedAt = Date.now();
+
+    await this.repository.saveSession(next);
+    return next;
+  }
+
+  async deleteSessionRecord(sessionId: string): Promise<void> {
+    await this.repository.deleteSession(sessionId);
+  }
   // ---------------------------
   // Retrieval
   // ---------------------------
@@ -249,4 +301,6 @@ export class DefaultSessionService implements SessionService {
   }
 
 }
+
+
 

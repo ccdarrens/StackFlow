@@ -465,3 +465,35 @@ html, body {
   display: none;
 }
 
+
+.sessions-grid-row-clickable {
+  cursor: pointer;
+}
+
+.sessions-grid-row-clickable:focus-visible {
+  outline: 2px solid rgba(201, 162, 39, 0.85);
+  outline-offset: -2px;
+}
+
+.sessions-grid-row-clickable:hover {
+  background: rgba(243, 239, 227, 0.04);
+}
+
+.session-edit-events {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid rgba(243, 239, 227, 0.2);
+  border-radius: 8px;
+  background: #0a1f17;
+  padding: 8px 10px;
+}
+
+.session-edit-events ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.session-edit-events p {
+  margin: 0;
+}
+
