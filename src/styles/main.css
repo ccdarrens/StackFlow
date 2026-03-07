@@ -392,3 +392,21 @@ html, body {
   margin: 2px 0;
 }
 
+
+.sessions-chart-card {
+  margin-top: 14px;
+  border: 1px solid rgba(243, 239, 227, 0.2);
+  border-radius: 10px;
+  background: rgba(10, 31, 23, 0.65);
+  padding: 12px;
+}
+
+.sessions-chart-card h3 {
+  margin: 0 0 10px;
+}
+
+.sessions-chart-wrap {
+  position: relative;
+  height: 280px;
+}
+

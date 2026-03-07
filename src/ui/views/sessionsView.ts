@@ -1,3 +1,4 @@
+import Chart from 'chart.js/auto';
 import type { SessionService } from '../../services/sessionService';
 import type { Session } from '../../models/session';
 import { calculateSessionTotals } from '../../stats/calculators';
@@ -236,7 +237,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   container.innerHTML = `
     <div class="sessions-card">
       <div class="sessions-titlebar">
-        <button id="sessionsBack" class="sessions-back-btn" type="button" aria-label="Back to start">?</button>
+        <button id="sessionsBack" class="sessions-back-btn" type="button" aria-label="Back to start">&larr;</button>
         <h2>Past Sessions</h2>
       </div>
 
@@ -318,6 +319,13 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         </div>
       </div>
 
+      <div class="sessions-chart-card">
+        <h3>Cumulative Profit Over Time</h3>
+        <div class="sessions-chart-wrap">
+          <canvas id="sessionsCumulativeChart"></canvas>
+        </div>
+      </div>
+
       <p id="sessionsEmpty" class="sessions-empty" hidden>No sessions found for the selected filters.</p>
     </div>
   `;
@@ -330,6 +338,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const exportButton = container.querySelector('#sessionsExportButton') as HTMLButtonElement;
   const body = container.querySelector('#sessionsGridBody') as HTMLDivElement;
   const empty = container.querySelector('#sessionsEmpty') as HTMLParagraphElement;
+  const chartCanvas = container.querySelector('#sessionsCumulativeChart') as HTMLCanvasElement;
   const grossProfitEl = container.querySelector('#sessionsGrossProfit') as HTMLSpanElement;
   const netProfitEl = container.querySelector('#sessionsNetProfit') as HTMLSpanElement;
   const expensesEl = container.querySelector('#sessionsExpenses') as HTMLSpanElement;
@@ -337,11 +346,94 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const grossPerHourEl = container.querySelector('#sessionsGrossPerHour') as HTMLSpanElement;
   const netPerHourEl = container.querySelector('#sessionsNetPerHour') as HTMLSpanElement;
 
+  let cumulativeChart: Chart | null = null;
+
+  const updateCumulativeChart = (sessions: Session[]) => {
+    const chronological = sessions.slice().sort((a, b) => a.startedAt - b.startedAt);
+
+    const labels: string[] = [];
+    const cumulativeGross: number[] = [];
+    const cumulativeNet: number[] = [];
+
+    let grossRunning = 0;
+    let netRunning = 0;
+
+    for (const session of chronological) {
+      const totals = calculateSessionTotals(session);
+      grossRunning += totals.grossProfit;
+      netRunning += totals.netProfit;
+
+      labels.push(formatDate(session.startedAt));
+      cumulativeGross.push(grossRunning / 100);
+      cumulativeNet.push(netRunning / 100);
+    }
+
+    if (!cumulativeChart) {
+      cumulativeChart = new Chart(chartCanvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Cumulative Gross',
+              data: cumulativeGross,
+              borderColor: '#7fd78f',
+              backgroundColor: 'rgba(127, 215, 143, 0.2)',
+              tension: 0.25,
+              pointRadius: 2,
+              borderWidth: 2
+            },
+            {
+              label: 'Cumulative Net',
+              data: cumulativeNet,
+              borderColor: '#d58a8a',
+              backgroundColor: 'rgba(213, 138, 138, 0.2)',
+              tension: 0.25,
+              pointRadius: 2,
+              borderWidth: 2
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                color: '#F3EFE3'
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            },
+            y: {
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            }
+          }
+        }
+      });
+      return;
+    }
+
+    cumulativeChart.data.labels = labels;
+    cumulativeChart.data.datasets[0].data = cumulativeGross;
+    cumulativeChart.data.datasets[1].data = cumulativeNet;
+    cumulativeChart.update();
+  };
+
   typeSelect.value = filters.type;
   locationSelect.value = filters.location;
   dateRangeSelect.value = filters.dateRange;
 
   backButton.addEventListener('click', () => {
+    if (cumulativeChart) {
+      cumulativeChart.destroy();
+      cumulativeChart = null;
+    }
     navigate('start');
   });
 
@@ -409,6 +501,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     netPerHourEl.textContent = formatMoney(netPerHour);
 
     exportButton.disabled = filtered.length === 0;
+
+    updateCumulativeChart(filtered);
   };
 
   exportButton.addEventListener('click', () => {
