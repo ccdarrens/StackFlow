@@ -29,7 +29,14 @@ export function initRouter(onRouteChange: RouteListener) {
 }
 
 export function navigate(route: Route) {
+  const current = parseHash();
   window.location.hash = `${route}`;
+
+  // Hashchange does not fire when navigating to the current hash;
+  // force a route callback so views can rerender after in-place actions.
+  if (route === current && listener) {
+    listener(route);
+  }
 }
 
 export function getCurrentRoute(): Route {

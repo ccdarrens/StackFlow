@@ -24,14 +24,8 @@ export async function renderTournamentView(session: Session, service: SessionSer
       <p>Expenses: $${(totals.expenses / 100).toFixed(2)}</p>      
       <h2>Gross: $${(totals.grossProfit / 100).toFixed(2)}</h2>
       <h2>Net: $${(totals.netProfit / 100).toFixed(2)}</h2>
-      ${totals.roi === undefined
-        ? ''
-        : '<h2>ROI (Gross): ${(totals.roi * 100).toFixed(1)}%</h2>'
-      }
-      ${totals.netRoi === undefined
-        ? ''
-        : `<h2>ROI (Net): ${(totals.netRoi * 100).toFixed(1)}%</h2>`
-      }
+      <h2>ROI (Gross): ${((totals.roi ? totals.roi : 0) * 100).toFixed(1)} %</h2>
+      <h2>ROI (Net): ${((totals.netRoi ? totals.netRoi : 0 ) * 100).toFixed(1)}%</h2>
 
       <hr/>
       <div id="actions">
@@ -43,7 +37,7 @@ export async function renderTournamentView(session: Session, service: SessionSer
       <button id="endSession">End Session</button>
   `;
 
-  const durationEl = document.getElementById('activeDuration')!;
+  const durationEl = container.querySelector('#activeDuration')!;
   setInterval(() => {
     const diff = Date.now() - start;
     const minutes = Math.floor(diff / 60000);
@@ -51,29 +45,34 @@ export async function renderTournamentView(session: Session, service: SessionSer
     durationEl.textContent = `${minutes}:${seconds.toString().padStart(2,'0')}`;
   }, 1000);
 
-  document.getElementById('rebuy')!
+  container.querySelector('#rebuy')!
     .addEventListener('click', async () => {
       await service.addInvestment(15000, 'rebuy');
       navigate('start');
     });
 
-  document.getElementById('tip')!
+  container.querySelector('#tip')!
     .addEventListener('click', async () => {
       await service.addExpense(100, 'tip', 'tipped the dealer');
       navigate('start');
     });
 
-  document.getElementById('food')!
+  container.querySelector('#food')!
     .addEventListener('click', async () => {
       await service.addExpense(500, 'food', 'bought food');
       navigate('start');
     });
 
-  document.getElementById('payout')!
+  container.querySelector('#payout')!
     .addEventListener('click', async () => {
       await service.addReturn(80000, 'payout');
       navigate('start');
     });
 
+  container.querySelector('#endSession')!
+    .addEventListener('click', async () => {
+      await service.endSession();
+      navigate('start');
+    });
   return container;
 }
