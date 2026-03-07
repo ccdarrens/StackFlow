@@ -1,6 +1,7 @@
 import type { SessionService } from '../../services/sessionService';
 import type { Session } from '../../models/session';
 import { calculateSessionTotals } from '../../stats/calculators';
+import { navigate } from '../router';
 
 type SessionFilterType = 'all' | 'cash' | 'tournament';
 type DateRangeFilter = 'all' | 'last_7_days' | 'last_month' | 'last_3_months' | 'last_year' | 'year_to_date';
@@ -55,7 +56,7 @@ function saveFilters(filters: SessionsFilters): void {
   localStorage.setItem(SESSIONS_FILTERS_KEY, JSON.stringify(filters));
 }
 
-function formatProfit(cents: number): string {
+function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
@@ -73,6 +74,12 @@ function sessionHours(session: Session): number {
 
 function formatHours(hours: number): string {
   return hours.toFixed(2);
+}
+
+function profitClass(value: number): string {
+  if (value > 0) return 'sessions-profit-positive';
+  if (value < 0) return 'sessions-profit-negative';
+  return 'sessions-profit-neutral';
 }
 
 function getDateRangeStartMs(range: DateRangeFilter): number | null {
@@ -228,7 +235,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   container.innerHTML = `
     <div class="sessions-card">
-      <h2>Past Sessions</h2>
+      <div class="sessions-titlebar">
+        <button id="sessionsBack" class="sessions-back-btn" type="button" aria-label="Back to start">?</button>
+        <h2>Past Sessions</h2>
+      </div>
 
       <div class="sessions-toolbar">
         <select id="sessionsExportFormat">
@@ -251,7 +261,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         <div class="sessions-filter-field">
           <label for="sessionsLocationFilter">Location</label>
           <select id="sessionsLocationFilter">
-            <option value="">All Locations</option>
+            <option value="">All</option>
             ${locations.map(location => `<option value="${location}">${location}</option>`).join('')}
           </select>
         </div>
@@ -283,16 +293,28 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
       <div class="sessions-footer">
         <div class="sessions-footer-item">
-          <span class="sessions-footer-label">Total Profit</span>
-          <span id="sessionsTotalProfit" class="sessions-profit sessions-profit-neutral">$0.00</span>
+          <span class="sessions-footer-label">Gross Profit</span>
+          <span id="sessionsGrossProfit" class="sessions-profit sessions-profit-neutral">$0.00</span>
+        </div>
+        <div class="sessions-footer-item">
+          <span class="sessions-footer-label">Net Profit</span>
+          <span id="sessionsNetProfit" class="sessions-profit sessions-profit-neutral">$0.00</span>
+        </div>
+        <div class="sessions-footer-item">
+          <span class="sessions-footer-label">Expenses</span>
+          <span id="sessionsExpenses">$0.00</span>
         </div>
         <div class="sessions-footer-item">
           <span class="sessions-footer-label">Hours</span>
           <span id="sessionsTotalHours">0.00</span>
         </div>
         <div class="sessions-footer-item">
-          <span class="sessions-footer-label">Profit / Hour</span>
-          <span id="sessionsProfitPerHour">$0.00</span>
+          <span class="sessions-footer-label">Gross / Hour</span>
+          <span id="sessionsGrossPerHour">$0.00</span>
+        </div>
+        <div class="sessions-footer-item">
+          <span class="sessions-footer-label">Net / Hour</span>
+          <span id="sessionsNetPerHour">$0.00</span>
         </div>
       </div>
 
@@ -300,6 +322,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     </div>
   `;
 
+  const backButton = container.querySelector('#sessionsBack') as HTMLButtonElement;
   const typeSelect = container.querySelector('#sessionsTypeFilter') as HTMLSelectElement;
   const locationSelect = container.querySelector('#sessionsLocationFilter') as HTMLSelectElement;
   const dateRangeSelect = container.querySelector('#sessionsDateRangeFilter') as HTMLSelectElement;
@@ -307,13 +330,20 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const exportButton = container.querySelector('#sessionsExportButton') as HTMLButtonElement;
   const body = container.querySelector('#sessionsGridBody') as HTMLDivElement;
   const empty = container.querySelector('#sessionsEmpty') as HTMLParagraphElement;
-  const totalProfitEl = container.querySelector('#sessionsTotalProfit') as HTMLSpanElement;
+  const grossProfitEl = container.querySelector('#sessionsGrossProfit') as HTMLSpanElement;
+  const netProfitEl = container.querySelector('#sessionsNetProfit') as HTMLSpanElement;
+  const expensesEl = container.querySelector('#sessionsExpenses') as HTMLSpanElement;
   const totalHoursEl = container.querySelector('#sessionsTotalHours') as HTMLSpanElement;
-  const profitPerHourEl = container.querySelector('#sessionsProfitPerHour') as HTMLSpanElement;
+  const grossPerHourEl = container.querySelector('#sessionsGrossPerHour') as HTMLSpanElement;
+  const netPerHourEl = container.querySelector('#sessionsNetPerHour') as HTMLSpanElement;
 
   typeSelect.value = filters.type;
   locationSelect.value = filters.location;
   dateRangeSelect.value = filters.dateRange;
+
+  backButton.addEventListener('click', () => {
+    navigate('start');
+  });
 
   const getActiveFilters = (): SessionsFilters => ({
     type: (typeSelect.value as SessionFilterType) || 'all',
@@ -331,7 +361,9 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
     const filtered = getFilteredSessions(activeFilters);
 
-    let totalProfit = 0;
+    let totalGross = 0;
+    let totalNet = 0;
+    let totalExpenses = 0;
     let totalHours = 0;
 
     if (filtered.length === 0) {
@@ -343,18 +375,15 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       body.innerHTML = filtered.map(session => {
         const totals = calculateSessionTotals(session);
         const hours = sessionHours(session);
-        totalProfit += totals.grossProfit;
-        totalHours += hours;
 
-        const profitClass = totals.grossProfit > 0
-          ? 'sessions-profit-positive'
-          : totals.grossProfit < 0
-            ? 'sessions-profit-negative'
-            : 'sessions-profit-neutral';
+        totalGross += totals.grossProfit;
+        totalNet += totals.netProfit;
+        totalExpenses += totals.expenses;
+        totalHours += hours;
 
         return `
           <div class="sessions-grid sessions-grid-row">
-            <div class="sessions-profit ${profitClass}">${formatProfit(totals.grossProfit)}</div>
+            <div class="sessions-profit ${profitClass(totals.grossProfit)}">${formatMoney(totals.grossProfit)}</div>
             <div>${formatDate(session.startedAt)}</div>
             <div>${formatHours(hours)}</div>
             <div>${(session.location ?? '-')}</div>
@@ -364,18 +393,20 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       }).join('');
     }
 
-    const totalProfitClass = totalProfit > 0
-      ? 'sessions-profit-positive'
-      : totalProfit < 0
-        ? 'sessions-profit-negative'
-        : 'sessions-profit-neutral';
+    const grossPerHour = totalHours > 0 ? totalGross / totalHours : 0;
+    const netPerHour = totalHours > 0 ? totalNet / totalHours : 0;
 
-    const profitPerHour = totalHours > 0 ? Math.round(totalProfit / totalHours) : 0;
+    grossProfitEl.className = `sessions-profit ${profitClass(totalGross)}`;
+    netProfitEl.className = `sessions-profit ${profitClass(totalNet)}`;
+    grossPerHourEl.className = `sessions-profit ${profitClass(grossPerHour)}`;
+    netPerHourEl.className = `sessions-profit ${profitClass(netPerHour)}`;
 
-    totalProfitEl.className = `sessions-profit ${totalProfitClass}`;
-    totalProfitEl.textContent = formatProfit(totalProfit);
+    grossProfitEl.textContent = formatMoney(totalGross);
+    netProfitEl.textContent = formatMoney(totalNet);
+    expensesEl.textContent = formatMoney(totalExpenses);
     totalHoursEl.textContent = formatHours(totalHours);
-    profitPerHourEl.textContent = formatProfit(profitPerHour);
+    grossPerHourEl.textContent = formatMoney(grossPerHour);
+    netPerHourEl.textContent = formatMoney(netPerHour);
 
     exportButton.disabled = filtered.length === 0;
   };

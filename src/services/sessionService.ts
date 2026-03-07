@@ -12,10 +12,10 @@ export interface SessionService {
   createTournamentSession(stakes?: string, location?: string, buyInCents?: number, startedAtOverride?: number): Promise<Session>;
 
   addInvestment(amountCents: number, note?: string, overrideTimestamp?: number): Promise<Session>;
-  
-  addReturn(amountCents: number, note?: string): Promise<Session>;
 
-  addExpense(amountCents: number, category: ExpenseCategory, note?: string): Promise<Session>;
+  addReturn(amountCents: number, note?: string, overrideTimestamp?: number): Promise<Session>;
+
+  addExpense(amountCents: number, category: ExpenseCategory, note?: string, overrideTimestamp?: number): Promise<Session>;
 
   endSession(overrideTimestamp?: number): Promise<Session>;
 
@@ -109,7 +109,7 @@ export class DefaultSessionService implements SessionService {
     return session;
   }
 
-  async addReturn(amountCents: number, note?: string): Promise<Session> {
+  async addReturn(amountCents: number, note?: string, overrideTimestamp?: number): Promise<Session> {
     const session = await this.requireActiveSession();
     if (!isActive(session)) {
       throw new Error('Cannot add return to closed session');
@@ -119,7 +119,11 @@ export class DefaultSessionService implements SessionService {
       throw new Error('Amount must be positive');
     }
 
-    session.events.push(this.createEvent('return', amountCents, note));
+    if (overrideTimestamp !== undefined && (!Number.isFinite(overrideTimestamp) || overrideTimestamp <= 0)) {
+      throw new Error('Invalid return timestamp');
+    }
+
+    session.events.push(this.createEvent('return', amountCents, note, overrideTimestamp));
     session.updatedAt = Date.now();
 
     await this.repository.saveSession(session);
@@ -127,7 +131,7 @@ export class DefaultSessionService implements SessionService {
     return session;
   }
 
-  async addExpense(amountCents: number, category: ExpenseCategory, note?: string): Promise<Session> {
+  async addExpense(amountCents: number, category: ExpenseCategory, note?: string, overrideTimestamp?: number): Promise<Session> {
     const session = await this.requireActiveSession();
     if (!isActive(session)) {
       throw new Error('Cannot add expense to closed session');
@@ -137,7 +141,11 @@ export class DefaultSessionService implements SessionService {
       throw new Error('Amount must be positive');
     }
 
-    session.events.push(this.createExpense(amountCents, category, note));
+    if (overrideTimestamp !== undefined && (!Number.isFinite(overrideTimestamp) || overrideTimestamp <= 0)) {
+      throw new Error('Invalid expense timestamp');
+    }
+
+    session.events.push(this.createExpense(amountCents, category, note, overrideTimestamp));
     session.updatedAt = Date.now();
 
     await this.repository.saveSession(session);
@@ -229,20 +237,16 @@ export class DefaultSessionService implements SessionService {
     };
   }
 
-    private createExpense(amountCents: number, category: ExpenseCategory, note?: string): SessionEvent {
+  private createExpense(amountCents: number, category: ExpenseCategory, note?: string, overrideTimestamp?: number): SessionEvent {
     return {
       id: generateId(),
       type: 'expense',
       amount: amountCents,
-      timestamp: Date.now(),
-      category: category,
+      timestamp: overrideTimestamp ?? Date.now(),
+      category,
       note
     };
   }
 
 }
-
-
-
-
 

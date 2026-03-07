@@ -1,7 +1,10 @@
 import type { SessionService } from '../../services/sessionService';
 import type { Session } from '../../models/session';
+import type { ExpenseCategory } from '../../models/event';
 import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
+
+const EXPENSE_CATEGORIES: ExpenseCategory[] = ['tip', 'food', 'drink', 'travel', 'lodging', 'other'];
 
 function formatDuration(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
@@ -17,6 +20,307 @@ function formatDuration(durationMs: number): string {
   return days > 0 ? `${days}d ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
 }
 
+function pad2(value: number): string {
+  return value.toString().padStart(2, '0');
+}
+
+function formatDateTimeLocal(now: Date): string {
+  const year = now.getFullYear();
+  const month = pad2(now.getMonth() + 1);
+  const day = pad2(now.getDate());
+  const hours = pad2(now.getHours());
+  const minutes = pad2(now.getMinutes());
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function parseDollarsToCents(rawValue: string, allowZero = false): number | null {
+  const normalized = rawValue.replace(/[$,\s]/g, '');
+  if (!normalized) {
+    return null;
+  }
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return null;
+  }
+
+  const amount = Number(normalized);
+  const minAllowed = allowZero ? 0 : Number.EPSILON;
+
+  if (!Number.isFinite(amount) || amount < minAllowed) {
+    return null;
+  }
+
+  return Math.round(amount * 100);
+}
+
+function attachSheetCloseHandlers(backdrop: HTMLDivElement, closeButton: HTMLButtonElement): () => void {
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      close();
+    }
+  };
+
+  const close = () => {
+    document.removeEventListener('keydown', onKeyDown);
+    backdrop.remove();
+  };
+
+  closeButton.addEventListener('click', close);
+
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) {
+      close();
+    }
+  });
+
+  document.addEventListener('keydown', onKeyDown);
+
+  return close;
+}
+
+function openRebuyAddonSheet(service: SessionService): void {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+
+  backdrop.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rebuyAddonTitle">
+      <h2 id="rebuyAddonTitle">Rebuy / Addon</h2>
+      <form id="rebuyAddonForm" class="sheet-form">
+        <label for="rebuyAddonAt">Date & Time</label>
+        <input id="rebuyAddonAt" type="datetime-local" required />
+
+        <label for="rebuyAddonAmount">Amount ($)</label>
+        <input id="rebuyAddonAmount" type="text" inputmode="decimal" placeholder="e.g. 150" required />
+
+        <label for="rebuyAddonNote">Note (Optional)</label>
+        <input id="rebuyAddonNote" type="text" value="rebuy" />
+
+        <p id="rebuyAddonError" class="sheet-error"></p>
+
+        <div class="sheet-actions">
+          <button type="button" id="cancelRebuyAddon" class="ghost-btn">Cancel</button>
+          <button type="submit" id="saveRebuyAddon">Save</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const form = backdrop.querySelector('#rebuyAddonForm') as HTMLFormElement;
+  const atInput = backdrop.querySelector('#rebuyAddonAt') as HTMLInputElement;
+  const amountInput = backdrop.querySelector('#rebuyAddonAmount') as HTMLInputElement;
+  const noteInput = backdrop.querySelector('#rebuyAddonNote') as HTMLInputElement;
+  const errorEl = backdrop.querySelector('#rebuyAddonError') as HTMLParagraphElement;
+  const cancelButton = backdrop.querySelector('#cancelRebuyAddon') as HTMLButtonElement;
+  const saveButton = backdrop.querySelector('#saveRebuyAddon') as HTMLButtonElement;
+
+  atInput.value = formatDateTimeLocal(new Date());
+  const close = attachSheetCloseHandlers(backdrop, cancelButton);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    errorEl.textContent = '';
+
+    const timestamp = atInput.value ? new Date(atInput.value).getTime() : Number.NaN;
+    if (!Number.isFinite(timestamp)) {
+      errorEl.textContent = 'Please enter a valid date and time.';
+      return;
+    }
+
+    const amountCents = parseDollarsToCents(amountInput.value.trim());
+    if (amountCents === null) {
+      errorEl.textContent = 'Please enter a valid amount (example: 150 or 150.50).';
+      return;
+    }
+
+    const note = noteInput.value.trim() || 'rebuy';
+
+    saveButton.disabled = true;
+
+    try {
+      await service.addInvestment(amountCents, note, timestamp);
+      close();
+      navigate('start');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save rebuy/addon.';
+      errorEl.textContent = message;
+      saveButton.disabled = false;
+    }
+  });
+}
+
+function openExpenseSheet(service: SessionService): void {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+
+  backdrop.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="expenseTitle">
+      <h2 id="expenseTitle">Add Expense</h2>
+      <form id="expenseForm" class="sheet-form">
+        <label for="expenseAt">Date & Time</label>
+        <input id="expenseAt" type="datetime-local" required />
+
+        <label for="expenseAmount">Amount ($)</label>
+        <input id="expenseAmount" type="text" inputmode="decimal" placeholder="e.g. 5" required />
+
+        <label>Category</label>
+        <div id="expenseCategoryPills" class="pill-row"></div>
+
+        <label for="expenseNote">Note (Optional)</label>
+        <input id="expenseNote" type="text" placeholder="Optional note" />
+
+        <p id="expenseError" class="sheet-error"></p>
+
+        <div class="sheet-actions">
+          <button type="button" id="cancelExpense" class="ghost-btn">Cancel</button>
+          <button type="submit" id="saveExpense">Save Expense</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const form = backdrop.querySelector('#expenseForm') as HTMLFormElement;
+  const expenseAtInput = backdrop.querySelector('#expenseAt') as HTMLInputElement;
+  const expenseAmountInput = backdrop.querySelector('#expenseAmount') as HTMLInputElement;
+  const expenseNoteInput = backdrop.querySelector('#expenseNote') as HTMLInputElement;
+  const categoryPills = backdrop.querySelector('#expenseCategoryPills') as HTMLDivElement;
+  const errorEl = backdrop.querySelector('#expenseError') as HTMLParagraphElement;
+  const cancelButton = backdrop.querySelector('#cancelExpense') as HTMLButtonElement;
+  const saveButton = backdrop.querySelector('#saveExpense') as HTMLButtonElement;
+
+  let selectedCategory: ExpenseCategory = 'tip';
+
+  expenseAtInput.value = formatDateTimeLocal(new Date());
+
+  const renderCategoryPills = () => {
+    categoryPills.innerHTML = '';
+
+    for (const category of EXPENSE_CATEGORIES) {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = `pill-btn${category === selectedCategory ? ' pill-btn-active' : ''}`;
+      pill.textContent = category.charAt(0).toUpperCase() + category.slice(1);
+      pill.addEventListener('click', () => {
+        selectedCategory = category;
+        renderCategoryPills();
+      });
+      categoryPills.appendChild(pill);
+    }
+  };
+
+  renderCategoryPills();
+
+  const close = attachSheetCloseHandlers(backdrop, cancelButton);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    errorEl.textContent = '';
+
+    const timestamp = expenseAtInput.value ? new Date(expenseAtInput.value).getTime() : Number.NaN;
+    if (!Number.isFinite(timestamp)) {
+      errorEl.textContent = 'Please enter a valid date and time.';
+      return;
+    }
+
+    const amountCents = parseDollarsToCents(expenseAmountInput.value.trim());
+    if (amountCents === null) {
+      errorEl.textContent = 'Please enter a valid expense amount (example: 5 or 5.25).';
+      return;
+    }
+
+    const note = expenseNoteInput.value.trim();
+
+    saveButton.disabled = true;
+
+    try {
+      await service.addExpense(amountCents, selectedCategory, note || undefined, timestamp);
+      close();
+      navigate('start');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save expense.';
+      errorEl.textContent = message;
+      saveButton.disabled = false;
+    }
+  });
+}
+
+function openEndSessionSheet(service: SessionService): void {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+
+  backdrop.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="endSessionTitle">
+      <h2 id="endSessionTitle">End Session</h2>
+      <form id="endSessionForm" class="sheet-form">
+        <label for="endSessionAt">Date & Time</label>
+        <input id="endSessionAt" type="datetime-local" required />
+
+        <label for="payoutAmount">Payout Amount ($)</label>
+        <input id="payoutAmount" type="text" inputmode="decimal" value="0" required />
+
+        <label for="payoutNote">Note (Optional)</label>
+        <input id="payoutNote" type="text" placeholder="Optional note" />
+
+        <p id="endSessionError" class="sheet-error"></p>
+
+        <div class="sheet-actions">
+          <button type="button" id="cancelEndSession" class="ghost-btn">Cancel</button>
+          <button type="submit" id="saveEndSession">End Session</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const form = backdrop.querySelector('#endSessionForm') as HTMLFormElement;
+  const endAtInput = backdrop.querySelector('#endSessionAt') as HTMLInputElement;
+  const payoutAmountInput = backdrop.querySelector('#payoutAmount') as HTMLInputElement;
+  const payoutNoteInput = backdrop.querySelector('#payoutNote') as HTMLInputElement;
+  const errorEl = backdrop.querySelector('#endSessionError') as HTMLParagraphElement;
+  const cancelButton = backdrop.querySelector('#cancelEndSession') as HTMLButtonElement;
+  const saveButton = backdrop.querySelector('#saveEndSession') as HTMLButtonElement;
+
+  endAtInput.value = formatDateTimeLocal(new Date());
+  const close = attachSheetCloseHandlers(backdrop, cancelButton);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    errorEl.textContent = '';
+
+    const timestamp = endAtInput.value ? new Date(endAtInput.value).getTime() : Number.NaN;
+    if (!Number.isFinite(timestamp)) {
+      errorEl.textContent = 'Please enter a valid date and time.';
+      return;
+    }
+
+    const payoutCents = parseDollarsToCents(payoutAmountInput.value.trim(), true);
+    if (payoutCents === null) {
+      errorEl.textContent = 'Please enter a valid payout amount (example: 0, 800, or 800.50).';
+      return;
+    }
+
+    const note = payoutNoteInput.value.trim();
+
+    saveButton.disabled = true;
+
+    try {
+      await service.addReturn(payoutCents, note || undefined, timestamp);
+      await service.endSession(timestamp);
+      close();
+      navigate('start');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to end session.';
+      errorEl.textContent = message;
+      saveButton.disabled = false;
+    }
+  });
+}
+
 export async function renderTournamentView(session: Session, service: SessionService): Promise<HTMLElement> {
   const container = document.createElement('div');
   container.className = 'app-container';
@@ -25,26 +329,16 @@ export async function renderTournamentView(session: Session, service: SessionSer
 
   container.innerHTML = `
       <h1>Active Tournament Session</h1>
-      <p>Stakes: ${session.stakes ?? '-'}</p>
-      <p>Location: ${session.location ?? '-'}</p>
+      <p>${session.stakes ?? '-'} @ ${session.location ?? '-'}</p>
       <p>Duration: <span id="activeDuration">${formatDuration(Date.now() - start)}</span></p>
-      <hr/>
       <p>Invested: $${(totals.invested / 100).toFixed(2)}</p>
-      <p>Returned: $${(totals.returned / 100).toFixed(2)}</p>
       <p>Expenses: $${(totals.expenses / 100).toFixed(2)}</p>
-      <h2>Gross: $${(totals.grossProfit / 100).toFixed(2)}</h2>
-      <h2>Net: $${(totals.netProfit / 100).toFixed(2)}</h2>
-      <h2>ROI (Gross): ${((totals.roi ? totals.roi : 0) * 100).toFixed(1)} %</h2>
-      <h2>ROI (Net): ${((totals.netRoi ? totals.netRoi : 0 ) * 100).toFixed(1)}%</h2>
-
       <hr/>
       <div id="actions">
-        <button id="rebuy">Rebuy ($150)</button>
-        <button id="tip">Tip ($1)</button>
-        <button id="food">Food ($5)</button>
-        <button id="payout">Payout ($800)</button>
+        <button id="rebuy">Rebuy / Addon</button>
+        <button id="expense">Expense</button>
+        <button id="endSession">End Session</button>
       </div>
-      <button id="endSession">End Session</button>
   `;
 
   const durationEl = container.querySelector('#activeDuration')!;
@@ -53,33 +347,19 @@ export async function renderTournamentView(session: Session, service: SessionSer
   }, 1000);
 
   container.querySelector('#rebuy')!
-    .addEventListener('click', async () => {
-      await service.addInvestment(15000, 'rebuy');
-      navigate('start');
+    .addEventListener('click', () => {
+      openRebuyAddonSheet(service);
     });
 
-  container.querySelector('#tip')!
-    .addEventListener('click', async () => {
-      await service.addExpense(100, 'tip', 'tipped the dealer');
-      navigate('start');
-    });
-
-  container.querySelector('#food')!
-    .addEventListener('click', async () => {
-      await service.addExpense(500, 'food', 'bought food');
-      navigate('start');
-    });
-
-  container.querySelector('#payout')!
-    .addEventListener('click', async () => {
-      await service.addReturn(80000, 'payout');
-      navigate('start');
+  container.querySelector('#expense')!
+    .addEventListener('click', () => {
+      openExpenseSheet(service);
     });
 
   container.querySelector('#endSession')!
-    .addEventListener('click', async () => {
-      await service.endSession();
-      navigate('start');
+    .addEventListener('click', () => {
+      openEndSessionSheet(service);
     });
+
   return container;
 }

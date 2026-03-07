@@ -99,6 +99,28 @@ html, body {
 .sessions-card h2 {
   margin: 0 0 14px;
 }
+.sessions-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.sessions-titlebar h2 {
+  margin: 0;
+}
+
+.sessions-back-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(243, 239, 227, 0.25);
+  background: #0a1f17;
+  color: var(--ivory);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
 .sessions-toolbar {
   display: flex;
   gap: 10px;
@@ -221,7 +243,7 @@ html, body {
   border-radius: 10px;
   background: rgba(201, 162, 39, 0.08);
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
   padding: 10px 12px;
 }
@@ -236,4 +258,12 @@ html, body {
   color: rgba(243, 239, 227, 0.75);
   font-size: 12px;
 }
+
+
+.pill-btn-active {
+  background: rgba(201, 162, 39, 0.2);
+  border-color: rgba(201, 162, 39, 0.9);
+}
+
+
 
