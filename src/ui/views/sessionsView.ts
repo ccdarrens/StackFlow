@@ -5,7 +5,7 @@ import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
 
 type SessionFilterType = 'all' | 'cash' | 'tournament';
-type DateRangeFilter = 'all' | 'last_7_days' | 'last_month' | 'last_3_months' | 'last_year' | 'year_to_date';
+type DateRangeFilter = 'all' | 'this_year' | 'this_month' | 'last_30_days' | 'last_90_days' | 'last_month' | 'last_year';
 type ExportFormat = 'json' | 'csv';
 
 type SortKey = 'profit' | 'date' | 'hours' | 'location' | 'type';
@@ -63,11 +63,12 @@ function loadFilters(): SessionsFilters {
 
     const dateRange = parsed.dateRange;
     const normalizedDateRange: DateRangeFilter =
-      dateRange === 'last_7_days' ||
+      dateRange === 'this_year' ||
+      dateRange === 'this_month' ||
+      dateRange === 'last_30_days' ||
+      dateRange === 'last_90_days' ||
       dateRange === 'last_month' ||
-      dateRange === 'last_3_months' ||
-      dateRange === 'last_year' ||
-      dateRange === 'year_to_date'
+      dateRange === 'last_year'
         ? dateRange
         : 'all';
 
@@ -253,28 +254,31 @@ function getDateRangeStartMs(range: DateRangeFilter): number | null {
   switch (range) {
     case 'all':
       return null;
-    case 'last_7_days': {
+    case 'this_year': {
+      const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      return start.getTime();
+    }
+    case 'this_month': {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      return start.getTime();
+    }
+    case 'last_30_days': {
       const start = new Date(now);
-      start.setDate(start.getDate() - 7);
+      start.setDate(start.getDate() - 30);
+      return start.getTime();
+    }
+    case 'last_90_days': {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 90);
       return start.getTime();
     }
     case 'last_month': {
-      const start = new Date(now);
-      start.setMonth(start.getMonth() - 1);
-      return start.getTime();
-    }
-    case 'last_3_months': {
-      const start = new Date(now);
-      start.setMonth(start.getMonth() - 3);
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
       return start.getTime();
     }
     case 'last_year': {
       const start = new Date(now);
       start.setFullYear(start.getFullYear() - 1);
-      return start.getTime();
-    }
-    case 'year_to_date': {
-      const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
       return start.getTime();
     }
   }
@@ -449,11 +453,13 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           <label for="sessionsDateRangeFilter">Date Range</label>
           <select id="sessionsDateRangeFilter">
             <option value="all">All</option>
-            <option value="last_7_days">Last 7 Days</option>
+            <option value="this_year">This Year</option>
+            <option value="this_month">This Month</option>
+            <option value="last_30_days">Last 30 Days</option>
+            <option value="last_90_days">Last 90 Days</option>
             <option value="last_month">Last Month</option>
-            <option value="last_3_months">Last 3 Months</option>
             <option value="last_year">Last Year</option>
-            <option value="year_to_date">Year to Date</option>
+
           </select>
         </div>
 
@@ -1735,6 +1741,14 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
+
+
+
+
+
+
 
 
 
