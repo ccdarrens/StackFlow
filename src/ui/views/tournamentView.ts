@@ -15,14 +15,14 @@ function openRebuyAddonSheet(service: SessionService): void {
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rebuyAddonTitle">
       <h2 id="rebuyAddonTitle">Rebuy / Addon</h2>
       <form id="rebuyAddonForm" class="sheet-form">
-        <label for="rebuyAddonAt">Date & Time</label>
-        <input id="rebuyAddonAt" type="datetime-local" required />
-
         <label for="rebuyAddonAmount">Amount ($)</label>
-        <input id="rebuyAddonAmount" type="text" inputmode="decimal" placeholder="e.g. 150" required />
+        <input id="rebuyAddonAmount" type="text" inputmode="decimal" placeholder="e.g. 150" required autofocus />
 
         <label for="rebuyAddonNote">Note (Optional)</label>
         <input id="rebuyAddonNote" type="text" value="rebuy" />
+
+        <label for="rebuyAddonAt">Date & Time</label>
+        <input id="rebuyAddonAt" type="datetime-local" required />
 
         <p id="rebuyAddonError" class="sheet-error"></p>
 
@@ -45,6 +45,8 @@ function openRebuyAddonSheet(service: SessionService): void {
   const saveButton = backdrop.querySelector('#saveRebuyAddon') as HTMLButtonElement;
 
   atInput.value = formatDateTimeLocal(new Date());
+  amountInput.focus();
+  amountInput.select();
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
 
   form.addEventListener('submit', async event => {
@@ -123,6 +125,8 @@ function openExpenseSheet(service: SessionService): void {
   let selectedCategory: ExpenseCategory = 'tip';
 
   expenseAtInput.value = formatDateTimeLocal(new Date());
+  expenseAmountInput.focus();
+  expenseAmountInput.select();
 
   const renderCategoryPills = () => {
     categoryPills.innerHTML = '';
@@ -184,14 +188,14 @@ function openEndSessionSheet(service: SessionService): void {
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="endSessionTitle">
       <h2 id="endSessionTitle">End Session</h2>
       <form id="endSessionForm" class="sheet-form">
-        <label for="endSessionAt">Date & Time</label>
-        <input id="endSessionAt" type="datetime-local" required />
-
         <label for="payoutAmount">Payout Amount ($)</label>
-        <input id="payoutAmount" type="text" inputmode="decimal" value="0" required />
+        <input id="payoutAmount" type="text" inputmode="decimal" value="0" required autofocus />
 
         <label for="payoutNote">Note (Optional)</label>
         <input id="payoutNote" type="text" placeholder="Optional note" />
+
+        <label for="endSessionAt">Date & Time</label>
+        <input id="endSessionAt" type="datetime-local" required />
 
         <p id="endSessionError" class="sheet-error"></p>
 
@@ -214,6 +218,8 @@ function openEndSessionSheet(service: SessionService): void {
   const saveButton = backdrop.querySelector('#saveEndSession') as HTMLButtonElement;
 
   endAtInput.value = formatDateTimeLocal(new Date());
+  payoutAmountInput.focus();
+  payoutAmountInput.select();
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
 
   form.addEventListener('submit', async event => {
@@ -272,7 +278,7 @@ export async function renderTournamentView(session: Session, service: SessionSer
           <button id="rebuy" class="session-action-btn">Rebuy / Addon</button>
           <button id="expense" class="session-action-btn">Expense</button>
         </div>
-        <button id="endSession" class="session-end-btn">End Session</button>
+        <button id="endSession" class="session-end-btn">Exit Tournament</button>
       </div>
   `;
 
@@ -298,4 +304,7 @@ export async function renderTournamentView(session: Session, service: SessionSer
 
   return container;
 }
+
+
+
 

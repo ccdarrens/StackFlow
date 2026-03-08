@@ -1,8 +1,8 @@
 import type { SessionService } from '../../services/sessionService';
+import type { Session } from '../../models/session';
 import { navigate } from '../router';
 import {
   loadCashStartPreferences,
-  saveCashLocationPreference,
   saveCashStartPreferences
 } from '../../storage/cashStartPreferences';
 import {
@@ -38,8 +38,37 @@ function addPills(
   }
 }
 
-function openCashStartSheet(service: SessionService): void {
+
+function collectRecentLocations(sessions: Session[], maxValues = 8): string[] {
+  const sorted = sessions.slice().sort((a, b) => b.startedAt - a.startedAt);
+  const seen = new Set<string>();
+  const values: string[] = [];
+
+  for (const session of sorted) {
+    const location = (session.location ?? '').trim();
+    if (!location) {
+      continue;
+    }
+
+    const key = location.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    values.push(location);
+
+    if (values.length >= maxValues) {
+      break;
+    }
+  }
+
+  return values;
+}
+async function openCashStartSheet(service: SessionService): Promise<void> {
   const prefs = loadCashStartPreferences();
+  const allSessions = await service.getAllSessions();
+  const recentLocationPills = collectRecentLocations(allSessions, 8);
 
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
@@ -92,7 +121,7 @@ function openCashStartSheet(service: SessionService): void {
   stakesInput.value = prefs.lastStakes;
   buyInInput.value = prefs.lastBuyInDollars;
 
-  addPills(locationPills, prefs.locations, value => {
+  addPills(locationPills, recentLocationPills, value => {
     locationInput.value = value;
     locationInput.focus();
   });
@@ -172,9 +201,74 @@ function openCashStartSheet(service: SessionService): void {
   });
 }
 
-function openTournamentStartSheet(service: SessionService): void {
-  const cashPrefs = loadCashStartPreferences();
+async function openTournamentStartSheet(service: SessionService): Promise<void> {
   const tournamentPrefs = loadTournamentStartPreferences();
+  const allSessions = await service.getAllSessions();
+  const tournamentSessions = allSessions
+    .filter(session => session.mode === 'tournament')
+    .slice()
+    .sort((a, b) => b.startedAt - a.startedAt);
+
+  const lastTournament = tournamentSessions[0];
+
+  const getLastBuyInCents = (): number | null => {
+    if (!lastTournament) {
+      return null;
+    }
+
+    const firstInvestment = lastTournament.events
+      .filter(event => event.type === 'investment' && event.amount > 0)
+      .slice()
+      .sort((a, b) => a.timestamp - b.timestamp)[0];
+
+    return firstInvestment ? firstInvestment.amount : null;
+  };
+
+  const uniqueValues = (values: string[]): string[] => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    for (const raw of values) {
+      const value = raw.trim();
+      if (!value) {
+        continue;
+      }
+
+      const key = value.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      result.push(value);
+    }
+
+    return result;
+  };
+
+  const tournamentStakesFromHistory = tournamentSessions
+    .map(session => (session.stakes ?? '').trim())
+    .filter(value => Boolean(value));
+
+  const tournamentBuyInsFromHistory = tournamentSessions
+    .map(session => {
+      const firstInvestment = session.events
+        .filter(event => event.type === 'investment' && event.amount > 0)
+        .slice()
+        .sort((a, b) => a.timestamp - b.timestamp)[0];
+
+      return firstInvestment ? formatDollarsFromCents(firstInvestment.amount) : '';
+    })
+    .filter(value => Boolean(value));
+
+  const defaultLocation = (lastTournament?.location ?? '').trim();
+  const defaultStakes = (lastTournament?.stakes ?? '').trim();
+  const defaultBuyInCents = getLastBuyInCents();
+  const defaultBuyIn = defaultBuyInCents !== null ? formatDollarsFromCents(defaultBuyInCents) : '';
+
+  const locationPillValues = collectRecentLocations(allSessions, 8);
+  const stakesPillValues = uniqueValues([defaultStakes, ...tournamentPrefs.stakes, ...tournamentStakesFromHistory]);
+  const buyInPillValues = uniqueValues([defaultBuyIn, ...tournamentPrefs.buyIns, ...tournamentBuyInsFromHistory]);
 
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
@@ -183,9 +277,6 @@ function openTournamentStartSheet(service: SessionService): void {
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="tournamentStartTitle">
       <h2 id="tournamentStartTitle">Start Tournament</h2>
       <form id="tournamentStartForm" class="sheet-form">
-        <label for="tournamentStartAt">Start Date & Time</label>
-        <input id="tournamentStartAt" type="datetime-local" required />
-
         <label for="tournamentLocation">Location</label>
         <input id="tournamentLocation" type="text" placeholder="e.g. Thunder Valley" maxlength="30" />
         <div id="tournamentLocationPills" class="pill-row"></div>
@@ -197,6 +288,9 @@ function openTournamentStartSheet(service: SessionService): void {
         <label for="tournamentBuyIn">Buy-In ($)</label>
         <input id="tournamentBuyIn" type="text" inputmode="decimal" placeholder="e.g. 150" required />
         <div id="tournamentBuyInPills" class="pill-row"></div>
+
+        <label for="tournamentStartAt">Start Date & Time</label>
+        <input id="tournamentStartAt" type="datetime-local" required />
 
         <p id="tournamentStartError" class="sheet-error"></p>
 
@@ -223,28 +317,28 @@ function openTournamentStartSheet(service: SessionService): void {
   const submitButton = backdrop.querySelector('#submitTournamentStart') as HTMLButtonElement;
 
   startAtInput.value = formatDateTimeLocal(new Date());
-  locationInput.value = cashPrefs.lastLocation;
-  stakesInput.value = tournamentPrefs.lastStakes;
-  buyInInput.value = tournamentPrefs.lastBuyInDollars;
+  locationInput.value = defaultLocation;
+  stakesInput.value = defaultStakes;
+  buyInInput.value = defaultBuyIn;
 
-  addPills(locationPills, cashPrefs.locations, value => {
+  addPills(locationPills, locationPillValues, value => {
     locationInput.value = value;
     locationInput.focus();
   });
 
-  addPills(stakesPills, tournamentPrefs.stakes, value => {
+  addPills(stakesPills, stakesPillValues, value => {
     stakesInput.value = value;
     stakesInput.focus();
   });
 
   addPills(
     buyInPills,
-    tournamentPrefs.buyIns,
+    buyInPillValues,
     value => {
       buyInInput.value = value;
       buyInInput.focus();
     },
-    value => `$${value}`
+    value => `${value}`
   );
 
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
@@ -291,7 +385,6 @@ function openTournamentStartSheet(service: SessionService): void {
         startedAtMillis
       );
 
-      saveCashLocationPreference(location);
       saveTournamentStartPreferences({
         stakes,
         buyInDollars: formatDollarsFromCents(buyInCents)
@@ -306,7 +399,6 @@ function openTournamentStartSheet(service: SessionService): void {
     }
   });
 }
-
 export async function renderHomeView(service: SessionService): Promise<HTMLElement> {
 
   const container = document.createElement('div');
@@ -329,12 +421,12 @@ export async function renderHomeView(service: SessionService): Promise<HTMLEleme
 
   container.querySelector('#startCash')!
     .addEventListener('click', () => {
-      openCashStartSheet(service);
+      void openCashStartSheet(service);
     });
 
   container.querySelector('#startTournament')!
     .addEventListener('click', () => {
-      openTournamentStartSheet(service);
+      void openTournamentStartSheet(service);
     });
 
   container.querySelector('#viewSessions')!
@@ -344,6 +436,11 @@ export async function renderHomeView(service: SessionService): Promise<HTMLEleme
 
   return container;
 }
+
+
+
+
+
 
 
 
