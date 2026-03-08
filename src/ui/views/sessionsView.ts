@@ -8,6 +8,14 @@ type SessionFilterType = 'all' | 'cash' | 'tournament';
 type DateRangeFilter = 'all' | 'last_7_days' | 'last_month' | 'last_3_months' | 'last_year' | 'year_to_date';
 type ExportFormat = 'json' | 'csv';
 
+type SortKey = 'profit' | 'date' | 'hours' | 'location' | 'type';
+type SortDirection = 'asc' | 'desc';
+
+interface SortState {
+  key: SortKey;
+  direction: SortDirection;
+}
+
 interface SessionsFilters {
   type: SessionFilterType;
   location: string;
@@ -228,7 +236,7 @@ function formatHours(hours: number): string {
 
 function formatHoursClock(hours: number): string {
   const totalMinutes = Math.max(0, Math.floor(hours * 60));
-  const hh = Math.floor(totalMinutes / 60).toString().padStart(2, '0');
+  const hh = Math.floor(totalMinutes / 60).toString();
   const mm = (totalMinutes % 60).toString().padStart(2, '0');
   return `${hh}:${mm}`;
 }
@@ -461,11 +469,11 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
       <div class="sessions-grid-wrap">
         <div class="sessions-grid sessions-grid-header">
-          <div>Profit</div>
-          <div>Date</div>
-          <div>Hours</div>
-          <div>Location</div>
-          <div>Type</div>
+          <div><button type="button" class="sessions-sort-btn" data-sort-key="profit">Profit</button></div>
+          <div><button type="button" class="sessions-sort-btn" data-sort-key="date">Date</button></div>
+          <div><button type="button" class="sessions-sort-btn" data-sort-key="hours">Hours</button></div>
+          <div><button type="button" class="sessions-sort-btn" data-sort-key="location">Location</button></div>
+          <div><button type="button" class="sessions-sort-btn" data-sort-key="type">Type</button></div>
         </div>
 
         <div id="sessionsGridBody" class="sessions-grid-body"></div>
@@ -552,6 +560,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const manualAddButton = container.querySelector('#sessionsManualAddButton') as HTMLButtonElement;
   const exportMenu = container.querySelector('#sessionsExportMenu') as HTMLDivElement;
   const exportMenuItems = Array.from(container.querySelectorAll('#sessionsExportMenu button')) as HTMLButtonElement[];
+  const sortButtons = Array.from(container.querySelectorAll('.sessions-sort-btn')) as HTMLButtonElement[];
   const body = container.querySelector('#sessionsGridBody') as HTMLDivElement;
   const empty = container.querySelector('#sessionsEmpty') as HTMLParagraphElement;
   const cumulativeCanvas = container.querySelector('#sessionsCumulativeChart') as HTMLCanvasElement;
@@ -578,6 +587,59 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   let itmChart: Chart | null = null;
   let roiByBuyinChart: Chart | null = null;
 
+  let sortState: SortState = { key: 'date', direction: 'desc' };
+
+
+  const compareSessions = (a: Session, b: Session): number => {
+    let left: number | string;
+    let right: number | string;
+
+    switch (sortState.key) {
+      case 'profit': {
+        left = calculateSessionTotals(a).grossProfit;
+        right = calculateSessionTotals(b).grossProfit;
+        break;
+      }
+      case 'date': {
+        left = a.startedAt;
+        right = b.startedAt;
+        break;
+      }
+      case 'hours': {
+        left = sessionHours(a);
+        right = sessionHours(b);
+        break;
+      }
+      case 'location': {
+        left = (a.location ?? '').toLowerCase();
+        right = (b.location ?? '').toLowerCase();
+        break;
+      }
+      case 'type': {
+        left = a.mode;
+        right = b.mode;
+        break;
+      }
+    }
+
+    const base = typeof left === 'string' && typeof right === 'string'
+      ? left.localeCompare(right)
+      : Number(left) - Number(right);
+
+    return sortState.direction === 'asc' ? base : -base;
+  };
+
+  const updateSortButtons = () => {
+    for (const button of sortButtons) {
+      const key = (button.dataset.sortKey as SortKey | undefined) ?? 'date';
+      const isActive = key === sortState.key;
+      const arrow = isActive ? (sortState.direction === 'asc' ? ' ?' : ' ?') : '';
+      const baseLabel = button.textContent?.replace(' ?', '').replace(' ?', '') ?? '';
+      button.textContent = `${baseLabel}${arrow}`;
+      button.classList.toggle('sessions-sort-btn-active', isActive);
+      button.setAttribute('aria-sort', isActive ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+    }
+  };
   const getActiveFilters = (): SessionsFilters => ({
     type: (typeSelect.value as SessionFilterType) || 'all',
     location: locationSelect.value,
@@ -1537,6 +1599,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     saveFilters(activeFilters);
 
     const filtered = getFilteredSessions(activeFilters);
+    const sortedSessions = filtered.slice().sort(compareSessions);
 
     let totalGross = 0;
     let totalNet = 0;
@@ -1549,7 +1612,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     } else {
       empty.hidden = true;
 
-      body.innerHTML = filtered.map(session => {
+      body.innerHTML = sortedSessions.map(session => {
         const totals = calculateSessionTotals(session);
         const hours = sessionHours(session);
         const hourlyRate = hours > 0 ? totals.grossProfit / hours : 0;
@@ -1561,7 +1624,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
         return `
           <div class="sessions-grid sessions-grid-row sessions-grid-row-clickable" data-session-id="${session.id}" role="button" tabindex="0" aria-label="Edit session ${session.id}">
-            <div class="sessions-profit ${profitClass(totals.grossProfit)}">${formatProfitMoney(totals.grossProfit)} <span class="sessions-profit-hourly">(${formatMoney(hourlyRate)} / hour)</span></div>
+            <div class="sessions-profit ${profitClass(totals.grossProfit)}">${session.mode === 'cash' ? `${formatProfitMoney(totals.grossProfit)} <span class='sessions-profit-hourly'>(${formatMoney(hourlyRate)} / hour)</span>` : formatProfitMoney(totals.grossProfit)}</div>
             <div>${formatDate(session.startedAt)}</div>
             <div>${formatHoursClock(hours)}</div>
             <div>${(session.location ?? '-')}</div>
@@ -1586,7 +1649,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     grossPerHourEl.textContent = formatMoney(grossPerHour);
     netPerHourEl.textContent = formatMoney(netPerHour);
 
-    exportMenuButton.disabled = filtered.length === 0;
+    exportMenuButton.disabled = sortedSessions.length === 0;
+    updateSortButtons();
 
     updateCumulativeChart(filtered);
     updateDayOfWeekChart(filtered);
@@ -1643,6 +1707,26 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
     openSessionEditSheet(session);
   });
+
+  for (const button of sortButtons) {
+    button.addEventListener('click', () => {
+      const key = (button.dataset.sortKey as SortKey | undefined) ?? 'date';
+      if (sortState.key === key) {
+        sortState = {
+          key,
+          direction: sortState.direction === 'asc' ? 'desc' : 'asc'
+        };
+      } else {
+        const defaultDirection: SortDirection = key === 'location' || key === 'type' ? 'asc' : 'desc';
+        sortState = {
+          key,
+          direction: defaultDirection
+        };
+      }
+
+      renderRows();
+    });
+  }
   typeSelect.addEventListener('change', renderRows);
   locationSelect.addEventListener('change', renderRows);
   dateRangeSelect.addEventListener('change', renderRows);
@@ -1651,6 +1735,16 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
+
+
+
+
+
+
+
+
 
 
 
