@@ -15,6 +15,26 @@ interface SessionsFilters {
 }
 
 const SESSIONS_FILTERS_KEY = 'stackflow.sessions.filters.v1';
+const MANUAL_ADD_DEFAULTS_KEY = 'stackflow.sessions.manualAdd.v1';
+const MAX_LOCATION_LENGTH = 30;
+const MAX_STAKES_LENGTH = 25;
+const MAX_BUY_IN_DOLLARS = 10000000;
+
+type ManualMode = 'cash' | 'tournament';
+
+interface ManualAddDefaults {
+  mode: ManualMode;
+  startedAtLocal: string;
+  endedAtLocal: string;
+  stakes: string;
+  location: string;
+  buyInDollars: string;
+  returnDollars: string;
+  cashStakes: string[];
+  tournamentStakes: string[];
+  cashLocations: string[];
+  tournamentLocations: string[];
+}
 
 function defaultFilters(): SessionsFilters {
   return {
@@ -57,8 +77,114 @@ function saveFilters(filters: SessionsFilters): void {
   localStorage.setItem(SESSIONS_FILTERS_KEY, JSON.stringify(filters));
 }
 
+
+function mergeUnique(values: string[]): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+
+  for (const raw of values) {
+    const value = raw.trim();
+    if (!value) {
+      continue;
+    }
+
+    const key = value.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(value);
+  }
+
+  return merged;
+}
+
+function toLocalInputValue(timestamp: number): string {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function defaultManualAddDefaults(): ManualAddDefaults {
+  const now = Date.now();
+  return {
+    mode: 'cash',
+    startedAtLocal: toLocalInputValue(now),
+    endedAtLocal: toLocalInputValue(now),
+    stakes: '',
+    location: '',
+    buyInDollars: '',
+    returnDollars: '0',
+    cashStakes: [],
+    tournamentStakes: [],
+    cashLocations: [],
+    tournamentLocations: []
+  };
+}
+
+function loadManualAddDefaults(): ManualAddDefaults {
+  const raw = localStorage.getItem(MANUAL_ADD_DEFAULTS_KEY);
+  if (!raw) {
+    return defaultManualAddDefaults();
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<ManualAddDefaults>;
+    const defaults = defaultManualAddDefaults();
+
+    return {
+      mode: parsed.mode === 'tournament' ? 'tournament' : 'cash',
+      startedAtLocal: typeof parsed.startedAtLocal === 'string' ? parsed.startedAtLocal : defaults.startedAtLocal,
+      endedAtLocal: typeof parsed.endedAtLocal === 'string' ? parsed.endedAtLocal : defaults.endedAtLocal,
+      stakes: typeof parsed.stakes === 'string' ? parsed.stakes : '',
+      location: typeof parsed.location === 'string' ? parsed.location : '',
+      buyInDollars: typeof parsed.buyInDollars === 'string' ? parsed.buyInDollars : '',
+      returnDollars: typeof parsed.returnDollars === 'string' ? parsed.returnDollars : '0',
+      cashStakes: Array.isArray(parsed.cashStakes) ? parsed.cashStakes.filter(item => typeof item === 'string') : [],
+      tournamentStakes: Array.isArray(parsed.tournamentStakes) ? parsed.tournamentStakes.filter(item => typeof item === 'string') : [],
+      cashLocations: Array.isArray(parsed.cashLocations) ? parsed.cashLocations.filter(item => typeof item === 'string') : [],
+      tournamentLocations: Array.isArray(parsed.tournamentLocations) ? parsed.tournamentLocations.filter(item => typeof item === 'string') : []
+    };
+  } catch {
+    return defaultManualAddDefaults();
+  }
+}
+
+function saveManualAddDefaults(defaults: ManualAddDefaults): void {
+  localStorage.setItem(MANUAL_ADD_DEFAULTS_KEY, JSON.stringify(defaults));
+}
+
+function parseDollarsToCents(rawValue: string, allowZero = false): number | null {
+  const normalized = rawValue.replace(/[$,\s]/g, '');
+  if (!normalized) {
+    return null;
+  }
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return null;
+  }
+
+  const amount = Number(normalized);
+  const min = allowZero ? 0 : Number.EPSILON;
+  if (!Number.isFinite(amount) || amount < min || amount > MAX_BUY_IN_DOLLARS) {
+    return null;
+  }
+
+  return Math.round(amount * 100);
+}
 function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+function formatProfitMoney(cents: number): string {
+  const isNegative = cents < 0;
+  const wholeDollars = Math.round(Math.abs(cents) / 100);
+  return (isNegative ? '-' : '') + '$' + wholeDollars.toLocaleString();
 }
 
 function formatDate(timestamp: number): string {
@@ -98,6 +224,13 @@ function sessionHours(session: Session): number {
 
 function formatHours(hours: number): string {
   return hours.toFixed(2);
+}
+
+function formatHoursClock(hours: number): string {
+  const totalMinutes = Math.max(0, Math.floor(hours * 60));
+  const hh = Math.floor(totalMinutes / 60).toString().padStart(2, '0');
+  const mm = (totalMinutes % 60).toString().padStart(2, '0');
+  return `${hh}:${mm}`;
 }
 
 function profitClass(value: number): string {
@@ -318,6 +451,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
         <div class="sessions-filter-export">
           <button id="sessionsExportMenuButton" class="sessions-export-icon-btn" type="button" aria-label="Export sessions">&#8595;</button>
+          <button id="sessionsManualAddButton" class="sessions-export-icon-btn" type="button" aria-label="Add session">+</button>
           <div id="sessionsExportMenu" class="sessions-export-menu" hidden>
             <button type="button" data-format="json">JSON</button>
             <button type="button" data-format="csv">CSV</button>
@@ -415,6 +549,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const locationSelect = container.querySelector('#sessionsLocationFilter') as HTMLSelectElement;
   const dateRangeSelect = container.querySelector('#sessionsDateRangeFilter') as HTMLSelectElement;
   const exportMenuButton = container.querySelector('#sessionsExportMenuButton') as HTMLButtonElement;
+  const manualAddButton = container.querySelector('#sessionsManualAddButton') as HTMLButtonElement;
   const exportMenu = container.querySelector('#sessionsExportMenu') as HTMLDivElement;
   const exportMenuItems = Array.from(container.querySelectorAll('#sessionsExportMenu button')) as HTMLButtonElement[];
   const body = container.querySelector('#sessionsGridBody') as HTMLDivElement;
@@ -956,6 +1091,228 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     roiByBuyinChart.update();
   };
 
+
+  const openManualAddSheet = () => {
+    const defaults = loadManualAddDefaults();
+    const backdrop = document.createElement('div');
+    backdrop.className = 'sheet-backdrop';
+
+    const renderModeLabel = () => (currentMode === 'cash' ? 'Cashout Amount ($)' : 'Payout Amount ($)');
+    let currentMode: ManualMode = defaults.mode;
+
+    backdrop.innerHTML = `
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="manualAddTitle">
+        <h2 id="manualAddTitle">Add Session</h2>
+        <form id="manualAddForm" class="sheet-form">
+          <label for="manualAddStartedAt">Start Date/Time</label>
+          <input id="manualAddStartedAt" type="datetime-local" required value="${escapeHtml(defaults.startedAtLocal)}" />
+
+          <label for="manualAddEndedAt">End Date/Time</label>
+          <input id="manualAddEndedAt" type="datetime-local" required value="${escapeHtml(defaults.endedAtLocal)}" />
+
+          <label>Mode</label>
+          <div class="pill-row" id="manualAddModeToggle">
+            <button type="button" class="pill-btn" data-manual-mode="cash">Cash</button>
+            <button type="button" class="pill-btn" data-manual-mode="tournament">Tournament</button>
+          </div>
+
+          <label for="manualAddStakes">Stakes</label>
+          <input id="manualAddStakes" type="text" maxlength="${MAX_STAKES_LENGTH}" value="${escapeHtml(defaults.stakes)}" />
+          <div id="manualAddStakesPills" class="pill-row"></div>
+
+          <label for="manualAddLocation">Location</label>
+          <input id="manualAddLocation" type="text" maxlength="${MAX_LOCATION_LENGTH}" value="${escapeHtml(defaults.location)}" />
+          <div id="manualAddLocationPills" class="pill-row"></div>
+
+          <label for="manualAddBuyIn">Buy-in Amount ($)</label>
+          <input id="manualAddBuyIn" type="text" inputmode="decimal" required value="${escapeHtml(defaults.buyInDollars)}" />
+
+          <label id="manualAddReturnLabel" for="manualAddReturn">${renderModeLabel()}</label>
+          <input id="manualAddReturn" type="text" inputmode="decimal" required value="${escapeHtml(defaults.returnDollars)}" />
+
+          <p id="manualAddError" class="sheet-error"></p>
+
+          <div class="sheet-actions">
+            <button type="button" id="manualAddCancel" class="ghost-btn">Cancel</button>
+            <button type="submit" id="manualAddSave" class="session-end-btn">Save Session</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    container.appendChild(backdrop);
+
+    const form = backdrop.querySelector('#manualAddForm') as HTMLFormElement;
+    const startedAtInput = backdrop.querySelector('#manualAddStartedAt') as HTMLInputElement;
+    const endedAtInput = backdrop.querySelector('#manualAddEndedAt') as HTMLInputElement;
+    const stakesInput = backdrop.querySelector('#manualAddStakes') as HTMLInputElement;
+    const locationInput = backdrop.querySelector('#manualAddLocation') as HTMLInputElement;
+    const buyInInput = backdrop.querySelector('#manualAddBuyIn') as HTMLInputElement;
+    const returnInput = backdrop.querySelector('#manualAddReturn') as HTMLInputElement;
+    const returnLabel = backdrop.querySelector('#manualAddReturnLabel') as HTMLLabelElement;
+    const stakesPillsHost = backdrop.querySelector('#manualAddStakesPills') as HTMLDivElement;
+    const locationPillsHost = backdrop.querySelector('#manualAddLocationPills') as HTMLDivElement;
+    const modeButtons = Array.from(backdrop.querySelectorAll('[data-manual-mode]')) as HTMLButtonElement[];
+    const errorEl = backdrop.querySelector('#manualAddError') as HTMLParagraphElement;
+    const cancelButton = backdrop.querySelector('#manualAddCancel') as HTMLButtonElement;
+    const saveButton = backdrop.querySelector('#manualAddSave') as HTMLButtonElement;
+
+    const close = () => {
+      document.removeEventListener('keydown', onKeyDown);
+      backdrop.remove();
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        close();
+      }
+    };
+
+    const setActiveModeButton = () => {
+      for (const button of modeButtons) {
+        const mode = button.dataset.manualMode as ManualMode;
+        const isActive = mode === currentMode;
+        button.classList.toggle('pill-btn-active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      }
+    };
+
+    const renderModePills = () => {
+      const sessionModeData = completed.filter(item => item.mode === currentMode);
+      const modeStakes = currentMode === 'cash' ? defaults.cashStakes : defaults.tournamentStakes;
+      const modeLocations = currentMode === 'cash' ? defaults.cashLocations : defaults.tournamentLocations;
+
+      const stakesValues = mergeUnique([
+        ...modeStakes,
+        ...collectStakes(sessionModeData)
+      ]);
+
+      const locationValues = mergeUnique([
+        ...modeLocations,
+        ...collectLocations(sessionModeData)
+      ]);
+
+      stakesPillsHost.innerHTML = stakesValues
+        .map(value => `<button type="button" class="pill-btn" data-manual-stakes="${escapeHtml(value)}">${escapeHtml(value)}</button>`)
+        .join('');
+
+      locationPillsHost.innerHTML = locationValues
+        .map(value => `<button type="button" class="pill-btn" data-manual-location="${escapeHtml(value)}">${escapeHtml(value)}</button>`)
+        .join('');
+
+      const stakePills = Array.from(stakesPillsHost.querySelectorAll('[data-manual-stakes]')) as HTMLButtonElement[];
+      const locationPills = Array.from(locationPillsHost.querySelectorAll('[data-manual-location]')) as HTMLButtonElement[];
+
+      for (const pill of stakePills) {
+        pill.addEventListener('click', () => {
+          stakesInput.value = pill.dataset.manualStakes ?? '';
+        });
+      }
+
+      for (const pill of locationPills) {
+        pill.addEventListener('click', () => {
+          locationInput.value = pill.dataset.manualLocation ?? '';
+        });
+      }
+    };
+
+    setActiveModeButton();
+    renderModePills();
+
+    for (const button of modeButtons) {
+      button.addEventListener('click', () => {
+        const mode = (button.dataset.manualMode as ManualMode | undefined) ?? 'cash';
+        currentMode = mode;
+        returnLabel.textContent = renderModeLabel();
+        setActiveModeButton();
+        renderModePills();
+      });
+    }
+
+    cancelButton.addEventListener('click', close);
+    backdrop.addEventListener('click', event => {
+      if (event.target === backdrop) {
+        close();
+      }
+    });
+    document.addEventListener('keydown', onKeyDown);
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      errorEl.textContent = '';
+
+      const startedAt = startedAtInput.value ? new Date(startedAtInput.value).getTime() : Number.NaN;
+      const endedAt = endedAtInput.value ? new Date(endedAtInput.value).getTime() : Number.NaN;
+
+      if (!Number.isFinite(startedAt)) {
+        errorEl.textContent = 'Please enter a valid start date/time.';
+        return;
+      }
+
+      if (!Number.isFinite(endedAt)) {
+        errorEl.textContent = 'Please enter a valid end date/time.';
+        return;
+      }
+
+      if (endedAt < startedAt) {
+        errorEl.textContent = 'End date/time must be after start date/time.';
+        return;
+      }
+
+      const buyInCents = parseDollarsToCents(buyInInput.value.trim(), true);
+      if (buyInCents === null) {
+        errorEl.textContent = 'Please enter a valid buy-in amount.';
+        return;
+      }
+
+      const returnCents = parseDollarsToCents(returnInput.value.trim(), true);
+      if (returnCents === null) {
+        errorEl.textContent = 'Please enter a valid cashout/payout amount.';
+        return;
+      }
+
+      saveButton.disabled = true;
+
+      try {
+        const stakes = stakesInput.value.trim();
+        const location = locationInput.value.trim();
+
+        await service.createCompletedSessionRecord({
+          mode: currentMode,
+          startedAt,
+          endedAt,
+          stakes,
+          location,
+          buyInCents,
+          returnCents
+        });
+
+        defaults.mode = currentMode;
+        defaults.startedAtLocal = startedAtInput.value;
+        defaults.endedAtLocal = endedAtInput.value;
+        defaults.stakes = stakes;
+        defaults.location = location;
+        defaults.buyInDollars = buyInInput.value.trim();
+        defaults.returnDollars = returnInput.value.trim();
+
+        if (currentMode === 'cash') {
+          defaults.cashStakes = mergeUnique([stakes, ...defaults.cashStakes]);
+          defaults.cashLocations = mergeUnique([location, ...defaults.cashLocations]);
+        } else {
+          defaults.tournamentStakes = mergeUnique([stakes, ...defaults.tournamentStakes]);
+          defaults.tournamentLocations = mergeUnique([location, ...defaults.tournamentLocations]);
+        }
+
+        saveManualAddDefaults(defaults);
+
+        close();
+        navigate('sessions');
+      } catch (error) {
+        errorEl.textContent = error instanceof Error ? error.message : 'Failed to add session';
+        saveButton.disabled = false;
+      }
+    });
+  };
   const openSessionEditSheet = (session: Session) => {
     const backdrop = document.createElement('div');
     backdrop.className = 'sheet-backdrop';
@@ -1159,6 +1516,12 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     event.stopPropagation();
   });
 
+  manualAddButton.addEventListener('click', event => {
+    event.stopPropagation();
+    hideExportMenu();
+    openManualAddSheet();
+  });
+
   for (const item of exportMenuItems) {
     item.addEventListener('click', () => {
       const format = (item.dataset.format as ExportFormat | undefined) ?? 'json';
@@ -1189,6 +1552,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       body.innerHTML = filtered.map(session => {
         const totals = calculateSessionTotals(session);
         const hours = sessionHours(session);
+        const hourlyRate = hours > 0 ? totals.grossProfit / hours : 0;
 
         totalGross += totals.grossProfit;
         totalNet += totals.netProfit;
@@ -1197,9 +1561,9 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
         return `
           <div class="sessions-grid sessions-grid-row sessions-grid-row-clickable" data-session-id="${session.id}" role="button" tabindex="0" aria-label="Edit session ${session.id}">
-            <div class="sessions-profit ${profitClass(totals.grossProfit)}">${formatMoney(totals.grossProfit)}</div>
+            <div class="sessions-profit ${profitClass(totals.grossProfit)}">${formatProfitMoney(totals.grossProfit)} <span class="sessions-profit-hourly">(${formatMoney(hourlyRate)} / hour)</span></div>
             <div>${formatDate(session.startedAt)}</div>
-            <div>${formatHours(hours)}</div>
+            <div>${formatHoursClock(hours)}</div>
             <div>${(session.location ?? '-')}</div>
             <div>${session.mode === 'cash' ? 'Cash' : 'Tournament'}</div>
           </div>
@@ -1215,8 +1579,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     grossPerHourEl.className = `sessions-profit ${profitClass(grossPerHour)}`;
     netPerHourEl.className = `sessions-profit ${profitClass(netPerHour)}`;
 
-    grossProfitEl.textContent = formatMoney(totalGross);
-    netProfitEl.textContent = formatMoney(totalNet);
+    grossProfitEl.textContent = formatProfitMoney(totalGross);
+    netProfitEl.textContent = formatProfitMoney(totalNet);
     expensesEl.textContent = formatMoney(totalExpenses);
     totalHoursEl.textContent = formatHours(totalHours);
     grossPerHourEl.textContent = formatMoney(grossPerHour);
@@ -1287,6 +1651,20 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

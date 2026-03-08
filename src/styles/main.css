@@ -497,3 +497,10 @@ html, body {
   margin: 0;
 }
 
+
+.sessions-profit-hourly {
+  font-size: 0.85em;
+  opacity: 0.72;
+  font-weight: 500;
+}
+

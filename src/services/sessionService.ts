@@ -25,6 +25,8 @@ export interface SessionService {
 
   getCompletedSessions(): Promise<Session[]>;
 
+  createCompletedSessionRecord(input: { mode: 'cash' | 'tournament'; startedAt: number; endedAt: number; stakes?: string; location?: string; buyInCents: number; returnCents: number; }): Promise<Session>;
+
   updateSessionRecord(sessionId: string, updates: { stakes?: string; location?: string; startedAt?: number; endedAt?: number | undefined }): Promise<Session>;
 
   deleteSessionRecord(sessionId: string): Promise<void>;
@@ -201,6 +203,63 @@ export class DefaultSessionService implements SessionService {
 
     return session;
   }
+
+  async createCompletedSessionRecord(input: {
+    mode: 'cash' | 'tournament';
+    startedAt: number;
+    endedAt: number;
+    stakes?: string;
+    location?: string;
+    buyInCents: number;
+    returnCents: number;
+  }): Promise<Session> {
+    if (!Number.isFinite(input.startedAt) || input.startedAt <= 0) {
+      throw new Error('Invalid start date/time');
+    }
+
+    if (!Number.isFinite(input.endedAt) || input.endedAt <= 0) {
+      throw new Error('Invalid end date/time');
+    }
+
+    if (input.endedAt < input.startedAt) {
+      throw new Error('End date/time must be after start date/time');
+    }
+
+    if (!Number.isFinite(input.buyInCents) || input.buyInCents < 0) {
+      throw new Error('Invalid buy-in amount');
+    }
+
+    if (!Number.isFinite(input.returnCents) || input.returnCents < 0) {
+      throw new Error('Invalid cashout/payout amount');
+    }
+
+    const stakes = (input.stakes ?? '').trim();
+    const location = (input.location ?? '').trim();
+    const now = Date.now();
+
+    const session: Session = {
+      id: generateId(),
+      mode: input.mode,
+      stakes: stakes ? stakes : undefined,
+      location: location ? location : undefined,
+      events: [],
+      startedAt: input.startedAt,
+      endedAt: input.endedAt,
+      updatedAt: now
+    };
+
+    if (input.buyInCents > 0) {
+      session.events.push(this.createEvent('investment', input.buyInCents, 'buyin', input.startedAt));
+    }
+
+    if (input.returnCents > 0) {
+      const returnNote = input.mode === 'cash' ? 'cashout' : 'payout';
+      session.events.push(this.createEvent('return', input.returnCents, returnNote, input.endedAt));
+    }
+
+    await this.repository.saveSession(session);
+    return session;
+  }
   async updateSessionRecord(
     sessionId: string,
     updates: { stakes?: string; location?: string; startedAt?: number; endedAt?: number | undefined }
@@ -301,6 +360,7 @@ export class DefaultSessionService implements SessionService {
   }
 
 }
+
 
 
 
