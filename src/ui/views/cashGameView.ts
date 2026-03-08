@@ -15,11 +15,14 @@ function openAddonSheet(service: SessionService): void {
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="addonTitle">
       <h2 id="addonTitle">Add Addon</h2>
       <form id="addonForm" class="sheet-form">
+        <label for="addonAmount">Addon Amount ($)</label>
+        <input id="addonAmount" type="text" inputmode="decimal" placeholder="e.g. 50" required autofocus />
+
+        <label for="addonNote">Note (Optional)</label>
+        <input id="addonNote" type="text" placeholder="Optional note" />
+
         <label for="addonAt">Date & Time</label>
         <input id="addonAt" type="datetime-local" required />
-
-        <label for="addonAmount">Addon Amount ($)</label>
-        <input id="addonAmount" type="text" inputmode="decimal" placeholder="e.g. 50" required />
 
         <p id="addonError" class="sheet-error"></p>
 
@@ -34,24 +37,22 @@ function openAddonSheet(service: SessionService): void {
   document.body.appendChild(backdrop);
 
   const form = backdrop.querySelector('#addonForm') as HTMLFormElement;
-  const addonAtInput = backdrop.querySelector('#addonAt') as HTMLInputElement;
   const addonAmountInput = backdrop.querySelector('#addonAmount') as HTMLInputElement;
+  const addonNoteInput = backdrop.querySelector('#addonNote') as HTMLInputElement;
+  const addonAtInput = backdrop.querySelector('#addonAt') as HTMLInputElement;
   const errorEl = backdrop.querySelector('#addonError') as HTMLParagraphElement;
   const cancelButton = backdrop.querySelector('#cancelAddon') as HTMLButtonElement;
   const saveButton = backdrop.querySelector('#saveAddon') as HTMLButtonElement;
 
   addonAtInput.value = formatDateTimeLocal(new Date());
+  addonAmountInput.focus();
+  addonAmountInput.select();
+
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
     errorEl.textContent = '';
-
-    const startedAt = addonAtInput.value ? new Date(addonAtInput.value).getTime() : Number.NaN;
-    if (!Number.isFinite(startedAt)) {
-      errorEl.textContent = 'Please enter a valid date and time.';
-      return;
-    }
 
     const amountCents = parseDollarsToCents(addonAmountInput.value.trim());
     if (amountCents === null) {
@@ -59,10 +60,18 @@ function openAddonSheet(service: SessionService): void {
       return;
     }
 
+    const timestamp = addonAtInput.value ? new Date(addonAtInput.value).getTime() : Number.NaN;
+    if (!Number.isFinite(timestamp)) {
+      errorEl.textContent = 'Please enter a valid date and time.';
+      return;
+    }
+
+    const note = addonNoteInput.value.trim() || 'addon';
+
     saveButton.disabled = true;
 
     try {
-      await service.addInvestment(amountCents, 'addon', startedAt);
+      await service.addInvestment(amountCents, note, timestamp);
       close();
       navigate('start');
     } catch (error) {
@@ -72,7 +81,6 @@ function openAddonSheet(service: SessionService): void {
     }
   });
 }
-
 function openExpenseSheet(service: SessionService): void {
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
@@ -81,17 +89,17 @@ function openExpenseSheet(service: SessionService): void {
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="expenseTitle">
       <h2 id="expenseTitle">Add Expense</h2>
       <form id="expenseForm" class="sheet-form">
-        <label for="expenseAt">Date & Time</label>
-        <input id="expenseAt" type="datetime-local" required />
-
         <label for="expenseAmount">Amount ($)</label>
-        <input id="expenseAmount" type="text" inputmode="decimal" placeholder="e.g. 5" required />
+        <input id="expenseAmount" type="text" inputmode="decimal" placeholder="e.g. 5" required autofocus />
 
         <label>Category</label>
         <div id="expenseCategoryPills" class="pill-row"></div>
 
         <label for="expenseNote">Note (Optional)</label>
         <input id="expenseNote" type="text" placeholder="Optional note" />
+
+        <label for="expenseAt">Date & Time</label>
+        <input id="expenseAt" type="datetime-local" required />
 
         <p id="expenseError" class="sheet-error"></p>
 
@@ -117,6 +125,8 @@ function openExpenseSheet(service: SessionService): void {
   let selectedCategory: ExpenseCategory = 'tip';
 
   expenseAtInput.value = formatDateTimeLocal(new Date());
+  expenseAmountInput.focus();
+  expenseAmountInput.select();
 
   const renderCategoryPills = () => {
     categoryPills.innerHTML = '';
@@ -178,14 +188,14 @@ function openEndSessionSheet(service: SessionService): void {
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="endSessionTitle">
       <h2 id="endSessionTitle">End Session</h2>
       <form id="endSessionForm" class="sheet-form">
-        <label for="endSessionAt">Date & Time</label>
-        <input id="endSessionAt" type="datetime-local" required />
-
         <label for="cashoutAmount">Cashout Amount ($)</label>
-        <input id="cashoutAmount" type="text" inputmode="decimal" placeholder="e.g. 200" required />
+        <input id="cashoutAmount" type="text" inputmode="decimal" placeholder="e.g. 200" required autofocus />
 
         <label for="cashoutNote">Note (Optional)</label>
         <input id="cashoutNote" type="text" placeholder="Optional note" />
+
+        <label for="endSessionAt">Date & Time</label>
+        <input id="endSessionAt" type="datetime-local" required />
 
         <p id="endSessionError" class="sheet-error"></p>
 
@@ -208,6 +218,8 @@ function openEndSessionSheet(service: SessionService): void {
   const saveButton = backdrop.querySelector('#saveEndSession') as HTMLButtonElement;
 
   endAtInput.value = formatDateTimeLocal(new Date());
+  cashoutAmountInput.focus();
+  cashoutAmountInput.select();
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
 
   form.addEventListener('submit', async event => {
@@ -292,4 +304,8 @@ export async function renderCashGameView(session: Session, service: SessionServi
 
   return container;
 }
+
+
+
+
 
