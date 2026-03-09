@@ -260,38 +260,39 @@ function profitClass(value: number): string {
   return 'sessions-profit-neutral';
 }
 
-function getDateRangeStartMs(range: DateRangeFilter): number | null {
+function getDateRangeBounds(range: DateRangeFilter): { startMs: number | null; endMs: number | null } {
   const now = new Date();
 
   switch (range) {
     case 'all':
-      return null;
+      return { startMs: null, endMs: null };
     case 'this_year': {
       const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-      return start.getTime();
+      return { startMs: start.getTime(), endMs: null };
     }
     case 'this_month': {
       const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      return start.getTime();
+      return { startMs: start.getTime(), endMs: null };
     }
     case 'last_30_days': {
       const start = new Date(now);
       start.setDate(start.getDate() - 30);
-      return start.getTime();
+      return { startMs: start.getTime(), endMs: null };
     }
     case 'last_90_days': {
       const start = new Date(now);
       start.setDate(start.getDate() - 90);
-      return start.getTime();
+      return { startMs: start.getTime(), endMs: null };
     }
     case 'last_month': {
       const start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
-      return start.getTime();
+      const end = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      return { startMs: start.getTime(), endMs: end.getTime() };
     }
     case 'last_year': {
-      const start = new Date(now);
-      start.setFullYear(start.getFullYear() - 1);
-      return start.getTime();
+      const start = new Date(now.getFullYear() - 1, 0, 1, 0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      return { startMs: start.getTime(), endMs: end.getTime() };
     }
   }
 }
@@ -306,8 +307,11 @@ function matchesFilters(session: Session, filters: SessionsFilters): boolean {
     return false;
   }
 
-  const rangeStartMs = getDateRangeStartMs(filters.dateRange);
-  if (rangeStartMs !== null && session.startedAt < rangeStartMs) {
+  const range = getDateRangeBounds(filters.dateRange);
+  if (range.startMs !== null && session.startedAt < range.startMs) {
+    return false;
+  }
+  if (range.endMs !== null && session.startedAt >= range.endMs) {
     return false;
   }
 
@@ -443,6 +447,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         <h2>Past Sessions</h2>
       </div>
 
+      <p id="sessionsNoRecords" class="sessions-empty sessions-empty-banner" hidden>No sessions have been created yet.</p>
+
       <div class="sessions-filters">
         <div class="sessions-filter-field">
           <label for="sessionsTypeFilter">Type</label>
@@ -484,6 +490,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           </div>
         </div>
       </div>
+
 
       <div class="sessions-grid-wrap">
         <div class="sessions-grid sessions-grid-header">
@@ -587,11 +594,15 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const exportMenuItems = Array.from(container.querySelectorAll('#sessionsExportMenu button')) as HTMLButtonElement[];
   const sortButtons = Array.from(container.querySelectorAll('.sessions-sort-btn')) as HTMLButtonElement[];
   const body = container.querySelector('#sessionsGridBody') as HTMLDivElement;
+  const noRecords = container.querySelector('#sessionsNoRecords') as HTMLParagraphElement;
   const empty = container.querySelector('#sessionsEmpty') as HTMLParagraphElement;
   const cumulativeCanvas = container.querySelector('#sessionsCumulativeChart') as HTMLCanvasElement;
   const dayOfWeekCanvas = container.querySelector('#sessionsDayOfWeekChart') as HTMLCanvasElement;
   const timeOfDayCanvas = container.querySelector('#sessionsTimeOfDayChart') as HTMLCanvasElement;
   const cashWinrateByStakesCard = container.querySelector('#sessionsCashWinrateByStakesCard') as HTMLDivElement;
+  const cumulativeCard = cumulativeCanvas.closest('.sessions-chart-card') as HTMLDivElement;
+  const dayOfWeekCard = dayOfWeekCanvas.closest('.sessions-chart-card') as HTMLDivElement;
+  const timeOfDayCard = timeOfDayCanvas.closest('.sessions-chart-card') as HTMLDivElement;
   const cashWinrateByStakesCanvas = container.querySelector('#sessionsCashWinrateByStakesChart') as HTMLCanvasElement;
   const cashLengthProfitCard = container.querySelector('#sessionsCashLengthProfitCard') as HTMLDivElement;
   const cashLengthProfitCanvas = container.querySelector('#sessionsCashLengthProfitChart') as HTMLCanvasElement;
@@ -1677,10 +1688,16 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     let totalExpenses = 0;
     let totalHours = 0;
 
-    if (filtered.length === 0) {
+    if (completed.length === 0) {
       body.innerHTML = '';
+      noRecords.hidden = false;
+      empty.hidden = true;
+    } else if (filtered.length === 0) {
+      body.innerHTML = '';
+      noRecords.hidden = true;
       empty.hidden = false;
     } else {
+      noRecords.hidden = true;
       empty.hidden = true;
 
       body.innerHTML = sortedSessions.map(session => {
@@ -1724,6 +1741,21 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
     exportMenuButton.disabled = sortedSessions.length === 0;
     updateSortButtons();
+
+    if (filtered.length === 0) {
+      cumulativeCard.hidden = true;
+      dayOfWeekCard.hidden = true;
+      timeOfDayCard.hidden = true;
+      cashWinrateByStakesCard.hidden = true;
+      cashLengthProfitCard.hidden = true;
+      itmCard.hidden = true;
+      roiByBuyinCard.hidden = true;
+      return;
+    }
+
+    cumulativeCard.hidden = false;
+    dayOfWeekCard.hidden = false;
+    timeOfDayCard.hidden = false;
 
     updateCumulativeChart(filtered);
     updateDayOfWeekChart(filtered);
@@ -1865,11 +1897,4 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
 
 
-
-
-
-
-
-
-
-
+`r`n
