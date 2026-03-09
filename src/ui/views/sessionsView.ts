@@ -520,12 +520,19 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       </div>
 
       <div class="sessions-chart-card">
-        <h3>Profit by Day of the Week (Daytime vs Nighttime)</h3>
+        <h3>Profit by Day of the Week</h3>
         <div class="sessions-chart-wrap">
           <canvas id="sessionsDayOfWeekChart"></canvas>
         </div>
       </div>
 
+
+      <div class="sessions-chart-card">
+        <h3>Profit by Time of Day</h3>
+        <div class="sessions-chart-wrap">
+          <canvas id="sessionsTimeOfDayChart"></canvas>
+        </div>
+      </div>
       <div id="sessionsCashWinrateByStakesCard" class="sessions-chart-card" hidden>
         <h3>Cash Game Winrate by Stakes</h3>
         <div class="sessions-chart-wrap">
@@ -571,6 +578,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const empty = container.querySelector('#sessionsEmpty') as HTMLParagraphElement;
   const cumulativeCanvas = container.querySelector('#sessionsCumulativeChart') as HTMLCanvasElement;
   const dayOfWeekCanvas = container.querySelector('#sessionsDayOfWeekChart') as HTMLCanvasElement;
+  const timeOfDayCanvas = container.querySelector('#sessionsTimeOfDayChart') as HTMLCanvasElement;
   const cashWinrateByStakesCard = container.querySelector('#sessionsCashWinrateByStakesCard') as HTMLDivElement;
   const cashWinrateByStakesCanvas = container.querySelector('#sessionsCashWinrateByStakesChart') as HTMLCanvasElement;
   const cashLengthProfitCard = container.querySelector('#sessionsCashLengthProfitCard') as HTMLDivElement;
@@ -588,6 +596,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   let cumulativeChart: Chart | null = null;
   let dayOfWeekChart: Chart | null = null;
+  let timeOfDayChart: Chart | null = null;
   let cashWinrateByStakesChart: Chart | null = null;
   let cashLengthProfitChart: Chart | null = null;
   let itmChart: Chart | null = null;
@@ -723,9 +732,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           maintainAspectRatio: false,
           plugins: {
             legend: {
-              labels: {
-                color: '#F3EFE3'
-              }
+              display: false
             }
           },
           scales: {
@@ -751,23 +758,18 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   const updateDayOfWeekChart = (sessions: Session[]) => {
     const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const daytime = [0, 0, 0, 0, 0, 0, 0];
-    const nighttime = [0, 0, 0, 0, 0, 0, 0];
+    const profits = [0, 0, 0, 0, 0, 0, 0];
 
     for (const session of sessions) {
       const totals = calculateSessionTotals(session);
-      const sessionDate = new Date(session.startedAt);
-      const dayIndex = sessionDate.getDay();
-      const hour = sessionDate.getHours();
-      const isDaytime = hour >= 6 && hour < 18;
-
-      if (isDaytime) {
-        daytime[dayIndex] += totals.grossProfit / 100;
-      } else {
-        nighttime[dayIndex] += totals.grossProfit / 100;
-      }
+      const dayIndex = new Date(session.startedAt).getDay();
+      profits[dayIndex] += totals.grossProfit / 100;
     }
 
+    const barBackgroundColors = profits.map(value =>
+      value < 0 ? 'rgba(173, 94, 94, 0.75)' : 'rgba(127, 215, 143, 0.75)'
+    );
+    const barBorderColors = profits.map(value => (value < 0 ? '#ad5e5e' : '#7fd78f'));
     if (!dayOfWeekChart) {
       dayOfWeekChart = new Chart(dayOfWeekCanvas, {
         type: 'bar',
@@ -775,20 +777,11 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           labels: dayLabels,
           datasets: [
             {
-              label: 'Daytime',
-              data: daytime,
-              backgroundColor: 'rgba(127, 215, 143, 0.75)',
-              borderColor: '#7fd78f',
-              borderWidth: 1,
-              stack: 'profit'
-            },
-            {
-              label: 'Nighttime',
-              data: nighttime,
-              backgroundColor: 'rgba(201, 162, 39, 0.75)',
-              borderColor: '#c9a227',
-              borderWidth: 1,
-              stack: 'profit'
+              label: 'Profit',
+              data: profits,
+              backgroundColor: barBackgroundColors,
+              borderColor: barBorderColors,
+              borderWidth: 1
             }
           ]
         },
@@ -797,19 +790,15 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           maintainAspectRatio: false,
           plugins: {
             legend: {
-              labels: {
-                color: '#F3EFE3'
-              }
+              display: false
             }
           },
           scales: {
             x: {
-              stacked: true,
               ticks: { color: '#F3EFE3' },
               grid: { color: 'rgba(243, 239, 227, 0.1)' }
             },
             y: {
-              stacked: true,
               ticks: { color: '#F3EFE3' },
               grid: { color: 'rgba(243, 239, 227, 0.1)' }
             }
@@ -819,9 +808,76 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       return;
     }
 
-    dayOfWeekChart.data.datasets[0].data = daytime;
-    dayOfWeekChart.data.datasets[1].data = nighttime;
+    dayOfWeekChart.data.datasets[0].data = profits;
+    dayOfWeekChart.data.datasets[0].backgroundColor = barBackgroundColors;
+    dayOfWeekChart.data.datasets[0].borderColor = barBorderColors;
     dayOfWeekChart.update();
+  };
+  const updateTimeOfDayChart = (sessions: Session[]) => {
+    const labels = ['Daytime', 'Nighttime'];
+    let daytimeProfit = 0;
+    let nighttimeProfit = 0;
+
+    for (const session of sessions) {
+      const totals = calculateSessionTotals(session);
+      const hour = new Date(session.startedAt).getHours();
+      const isDaytime = hour >= 6 && hour < 18;
+
+      if (isDaytime) {
+        daytimeProfit += totals.grossProfit / 100;
+      } else {
+        nighttimeProfit += totals.grossProfit / 100;
+      }
+    }
+
+    const values = [daytimeProfit, nighttimeProfit];
+    const timeOfDayBackgroundColors = values.map(value =>
+      value < 0 ? 'rgba(173, 94, 94, 0.75)' : 'rgba(127, 215, 143, 0.75)'
+    );
+    const timeOfDayBorderColors = values.map(value => (value < 0 ? '#ad5e5e' : '#7fd78f'));
+
+    if (!timeOfDayChart) {
+      timeOfDayChart = new Chart(timeOfDayCanvas, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Profit',
+              data: values,
+              backgroundColor: timeOfDayBackgroundColors,
+              borderColor: timeOfDayBorderColors,
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            },
+            y: {
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            }
+          }
+        }
+      });
+      return;
+    }
+
+    timeOfDayChart.data.datasets[0].data = values;
+    timeOfDayChart.data.datasets[0].backgroundColor = timeOfDayBackgroundColors;
+    timeOfDayChart.data.datasets[0].borderColor = timeOfDayBorderColors;
+    timeOfDayChart.update();
   };
 
 
@@ -887,9 +943,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           maintainAspectRatio: false,
           plugins: {
             legend: {
-              labels: {
-                color: '#F3EFE3'
-              }
+              display: false
             }
           },
           scales: {
@@ -953,9 +1007,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           maintainAspectRatio: false,
           plugins: {
             legend: {
-              labels: {
-                color: '#F3EFE3'
-              }
+              display: false
             }
           },
           scales: {
@@ -1039,9 +1091,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           maintainAspectRatio: false,
           plugins: {
             legend: {
-              labels: {
-                color: '#F3EFE3'
-              }
+              display: false
             }
           }
         }
@@ -1130,9 +1180,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           maintainAspectRatio: false,
           plugins: {
             legend: {
-              labels: {
-                color: '#F3EFE3'
-              }
+              display: false
             }
           },
           scales: {
@@ -1552,6 +1600,11 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       dayOfWeekChart = null;
     }
 
+    if (timeOfDayChart) {
+      timeOfDayChart.destroy();
+      timeOfDayChart = null;
+    }
+
     if (cashWinrateByStakesChart) {
       cashWinrateByStakesChart.destroy();
       cashWinrateByStakesChart = null;
@@ -1660,6 +1713,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
     updateCumulativeChart(filtered);
     updateDayOfWeekChart(filtered);
+    updateTimeOfDayChart(filtered);
     updateCashWinrateByStakesChart(filtered);
     updateCashLengthVsProfitChart(filtered);
     updateTournamentItmChart(filtered);
@@ -1741,6 +1795,13 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
+
+
+
+
+
 
 
 
