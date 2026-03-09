@@ -224,6 +224,16 @@ html, body {
   color: rgba(243, 239, 227, 0.8);
 }
 
+.sessions-empty-banner {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  background: rgba(201, 162, 39, 0.14);
+  color: #f3efe3;
+  font-weight: 600;
+}
+
 @keyframes sheet-rise {
   from {
     transform: translateY(12px);

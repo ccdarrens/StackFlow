@@ -77,11 +77,8 @@ async function openCashStartSheet(service: SessionService): Promise<void> {
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cashStartTitle">
       <h2 id="cashStartTitle">Start Cash Game</h2>
       <form id="cashStartForm" class="sheet-form">
-        <label for="cashStartAt">Start Date & Time</label>
-        <input id="cashStartAt" type="datetime-local" required />
-
         <label for="cashLocation">Location</label>
-        <input id="cashLocation" type="text" placeholder="e.g. Stones" maxlength="30" />
+        <input id="cashLocation" type="text" placeholder="e.g. Bellagio" maxlength="30" />
         <div id="cashLocationPills" class="pill-row"></div>
 
         <label for="cashStakes">Stakes</label>
@@ -89,8 +86,11 @@ async function openCashStartSheet(service: SessionService): Promise<void> {
         <div id="cashStakesPills" class="pill-row"></div>
 
         <label for="cashBuyIn">Initial Buy-In ($)</label>
-        <input id="cashBuyIn" type="text" inputmode="decimal" placeholder="e.g. 100" required />
+        <input id="cashBuyIn" type="text" inputmode="decimal" placeholder="e.g. 500" required />
         <div id="cashBuyInPills" class="pill-row"></div>
+
+        <label for="cashStartAt">Start Date & Time</label>
+        <input id="cashStartAt" type="datetime-local" required />
 
         <p id="cashStartError" class="sheet-error"></p>
 
@@ -278,15 +278,15 @@ async function openTournamentStartSheet(service: SessionService): Promise<void> 
       <h2 id="tournamentStartTitle">Start Tournament</h2>
       <form id="tournamentStartForm" class="sheet-form">
         <label for="tournamentLocation">Location</label>
-        <input id="tournamentLocation" type="text" placeholder="e.g. Thunder Valley" maxlength="30" />
+        <input id="tournamentLocation" type="text" placeholder="e.g. Bellagio" maxlength="30" />
         <div id="tournamentLocationPills" class="pill-row"></div>
 
         <label for="tournamentStakes">Stakes</label>
-        <input id="tournamentStakes" type="text" placeholder="e.g. $150 MTT" maxlength="25" />
+        <input id="tournamentStakes" type="text" placeholder="e.g. $150 Daily NLH" maxlength="25" />
         <div id="tournamentStakesPills" class="pill-row"></div>
 
         <label for="tournamentBuyIn">Buy-In ($)</label>
-        <input id="tournamentBuyIn" type="text" inputmode="decimal" placeholder="e.g. 150" required />
+        <input id="tournamentBuyIn" type="text" inputmode="decimal" placeholder="150" required />
         <div id="tournamentBuyInPills" class="pill-row"></div>
 
         <label for="tournamentStartAt">Start Date & Time</label>
@@ -436,6 +436,8 @@ export async function renderHomeView(service: SessionService): Promise<HTMLEleme
 
   return container;
 }
+
+
 
 
 
