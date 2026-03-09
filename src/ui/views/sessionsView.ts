@@ -197,7 +197,11 @@ function formatProfitMoney(cents: number): string {
 }
 
 function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString();
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: 'numeric',
+    day: 'numeric',
+    year: '2-digit'
+  });
 }
 
 function pad2(value: number): string {
@@ -240,6 +244,14 @@ function formatHoursClock(hours: number): string {
   const hh = Math.floor(totalMinutes / 60).toString();
   const mm = (totalMinutes % 60).toString().padStart(2, '0');
   return `${hh}:${mm}`;
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}...`;
 }
 
 function profitClass(value: number): string {
@@ -475,11 +487,11 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
       <div class="sessions-grid-wrap">
         <div class="sessions-grid sessions-grid-header">
+          <div class="sessions-mode-col" aria-label="Mode"></div>
           <div><button type="button" class="sessions-sort-btn" data-sort-key="profit">Profit</button></div>
           <div><button type="button" class="sessions-sort-btn" data-sort-key="date">Date</button></div>
-          <div><button type="button" class="sessions-sort-btn" data-sort-key="hours">Hours</button></div>
-          <div><button type="button" class="sessions-sort-btn" data-sort-key="location">Location</button></div>
-          <div><button type="button" class="sessions-sort-btn" data-sort-key="type">Type</button></div>
+          <div><button type="button" class="sessions-sort-btn" data-sort-key="hours">Hrs</button></div>
+          <div><button type="button" class="sessions-sort-btn" data-sort-key="location">Loc</button></div>
         </div>
 
         <div id="sessionsGridBody" class="sessions-grid-body"></div>
@@ -648,8 +660,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     for (const button of sortButtons) {
       const key = (button.dataset.sortKey as SortKey | undefined) ?? 'date';
       const isActive = key === sortState.key;
-      const arrow = isActive ? (sortState.direction === 'asc' ? ' ?' : ' ?') : '';
-      const baseLabel = button.textContent?.replace(' ?', '').replace(' ?', '') ?? '';
+      const arrow = isActive ? (sortState.direction === 'asc' ? ' ^' : ' v') : '';
+      const baseLabel = button.textContent?.replace(' ^', '').replace(' v', '') ?? '';
       button.textContent = `${baseLabel}${arrow}`;
       button.classList.toggle('sessions-sort-btn-active', isActive);
       button.setAttribute('aria-sort', isActive ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none');
@@ -1675,6 +1687,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         const totals = calculateSessionTotals(session);
         const hours = sessionHours(session);
         const hourlyRate = hours > 0 ? totals.grossProfit / hours : 0;
+        const location = (session.location ?? '').trim();
+        const locationDisplay = location ? truncateText(location, 6) : '-';
 
         totalGross += totals.grossProfit;
         totalNet += totals.netProfit;
@@ -1683,11 +1697,11 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
         return `
           <div class="sessions-grid sessions-grid-row sessions-grid-row-clickable" data-session-id="${session.id}" role="button" tabindex="0" aria-label="Edit session ${session.id}">
-            <div class="sessions-profit ${profitClass(totals.grossProfit)}">${session.mode === 'cash' ? `${formatProfitMoney(totals.grossProfit)} <span class='sessions-profit-hourly'>(${formatMoney(hourlyRate)} / hour)</span>` : formatProfitMoney(totals.grossProfit)}</div>
+            <div class="sessions-mode-icon" aria-label="${session.mode === 'cash' ? 'Cash game' : 'Tournament'}" title="${session.mode === 'cash' ? 'Cash game' : 'Tournament'}">${session.mode === 'cash' ? '&#128181;' : '&#127942;'}</div>
+            <div class="sessions-profit ${profitClass(totals.grossProfit)}">${session.mode === 'cash' ? `${formatProfitMoney(totals.grossProfit)} <span class='sessions-profit-hourly'>${(hourlyRate / 100).toFixed(2)} / hr</span>` : formatProfitMoney(totals.grossProfit)}</div>
             <div>${formatDate(session.startedAt)}</div>
             <div>${formatHoursClock(hours)}</div>
-            <div>${(session.location ?? '-')}</div>
-            <div>${session.mode === 'cash' ? 'Cash' : 'Tournament'}</div>
+            <div title="${escapeHtml(location || '-')}">${escapeHtml(locationDisplay)}</div>
           </div>
         `;
       }).join('');
@@ -1795,6 +1809,14 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
+
+
+
+
+
+
 
 
 

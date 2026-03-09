@@ -178,12 +178,22 @@ html, body {
 
 .sessions-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 0.8fr 1.2fr 0.9fr;
-  gap: 10px;
+  grid-template-columns: 0.28fr 1.42fr 1fr 0.75fr 0.95fr;
+  gap: 6px;
   align-items: center;
   padding: 10px 12px;
 }
 
+
+.sessions-mode-col {
+  text-align: center;
+}
+
+.sessions-mode-icon {
+  text-align: center;
+  font-size: 1.05rem;
+  line-height: 1;
+}
 .sessions-grid-header {
   background: rgba(201, 162, 39, 0.12);
   border-bottom: 1px solid rgba(243, 239, 227, 0.2);
@@ -205,6 +215,7 @@ html, body {
 
 .sessions-profit {
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .sessions-profit-positive {
@@ -386,6 +397,30 @@ html, body {
 }
 
 
+
+.home-actions .session-action-btn {
+  font-size: 1.1rem;
+  font-weight: 700;
+  min-height: 58px;
+  padding: 14px 16px;
+  border-radius: 12px;
+}
+
+.home-actions-vertical {
+  gap: 14px;
+}
+
+@media (max-width: 480px) {
+  .home-actions .session-action-btn {
+    font-size: 1.18rem;
+    min-height: 64px;
+    padding: 16px 18px;
+  }
+
+  .home-actions-vertical {
+    gap: 16px;
+  }
+}
 .home-actions-divider {
   height: 1px;
   background: linear-gradient(90deg, rgba(243,239,227,0.08) 0%, rgba(201,162,39,0.6) 50%, rgba(243,239,227,0.08) 100%);
@@ -499,11 +534,12 @@ html, body {
 
 
 .sessions-profit-hourly {
+  display: block;
+  margin-top: 2px;
   font-size: 0.85em;
   opacity: 0.72;
   font-weight: 500;
 }
-
 
 .sessions-sort-btn {
   width: 100%;
