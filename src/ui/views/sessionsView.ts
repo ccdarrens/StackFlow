@@ -246,13 +246,6 @@ function formatHoursClock(hours: number): string {
   return `${hh}:${mm}`;
 }
 
-function truncateText(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength)}...`;
-}
 
 function profitClass(value: number): string {
   if (value > 0) return 'sessions-profit-positive';
@@ -1705,7 +1698,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         const hours = sessionHours(session);
         const hourlyRate = hours > 0 ? totals.grossProfit / hours : 0;
         const location = (session.location ?? '').trim();
-        const locationDisplay = location ? truncateText(location, 6) : '-';
+        const locationDisplay = location || '-';
 
         totalGross += totals.grossProfit;
         totalNet += totals.netProfit;
@@ -1718,7 +1711,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
             <div class="sessions-profit ${profitClass(totals.grossProfit)}">${session.mode === 'cash' ? `${formatProfitMoney(totals.grossProfit)} <span class='sessions-profit-hourly'>${(hourlyRate / 100).toFixed(2)} / hr</span>` : formatProfitMoney(totals.grossProfit)}</div>
             <div>${formatDate(session.startedAt)}</div>
             <div>${formatHoursClock(hours)}</div>
-            <div title="${escapeHtml(location || '-')}">${escapeHtml(locationDisplay)}</div>
+            <div class="sessions-location-cell" title="${escapeHtml(location || '-')}">${escapeHtml(locationDisplay)}</div>
           </div>
         `;
       }).join('');
@@ -1726,7 +1719,6 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
     const grossPerHour = totalHours > 0 ? totalGross / totalHours : 0;
     const netPerHour = totalHours > 0 ? totalNet / totalHours : 0;
-
     grossProfitEl.className = `sessions-profit ${profitClass(totalGross)}`;
     netProfitEl.className = `sessions-profit ${profitClass(totalNet)}`;
     grossPerHourEl.className = `sessions-profit ${profitClass(grossPerHour)}`;

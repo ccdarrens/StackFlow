@@ -184,6 +184,11 @@ html, body {
   padding: 10px 12px;
 }
 
+.sessions-grid > div {
+  min-width: 0;
+}
+
+
 
 .sessions-mode-col {
   text-align: center;
@@ -211,6 +216,13 @@ html, body {
 
 .sessions-grid-row:last-child {
   border-bottom: none;
+}
+
+
+.sessions-location-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sessions-profit {
