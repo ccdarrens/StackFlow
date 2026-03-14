@@ -30,6 +30,8 @@ export interface SessionService {
   updateSessionRecord(sessionId: string, updates: { stakes?: string; location?: string; startedAt?: number; endedAt?: number | undefined }): Promise<Session>;
 
   deleteSessionRecord(sessionId: string): Promise<void>;
+
+  mergeSessionRecords(records: Session[]): Promise<{ added: number; overwritten: number }>;
 }
 
 export class DefaultSessionService implements SessionService {
@@ -309,6 +311,27 @@ export class DefaultSessionService implements SessionService {
   async deleteSessionRecord(sessionId: string): Promise<void> {
     await this.repository.deleteSession(sessionId);
   }
+
+  async mergeSessionRecords(records: Session[]): Promise<{ added: number; overwritten: number }> {
+    const existing = await this.repository.getAllSessions();
+    const existingById = new Map(existing.map(session => [session.id, session]));
+    let added = 0;
+    let overwritten = 0;
+
+    for (const record of records) {
+      const current = existingById.get(record.id);
+      await this.repository.saveSession(record);
+      existingById.set(record.id, record);
+
+      if (current) {
+        overwritten += 1;
+      } else {
+        added += 1;
+      }
+    }
+
+    return { added, overwritten };
+  }
   // ---------------------------
   // Retrieval
   // ---------------------------
@@ -360,6 +383,8 @@ export class DefaultSessionService implements SessionService {
   }
 
 }
+
+
 
 
 

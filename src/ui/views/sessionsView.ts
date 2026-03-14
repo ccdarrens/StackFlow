@@ -418,6 +418,128 @@ function downloadTextFile(content: string, fileName: string, mimeType: string): 
   URL.revokeObjectURL(url);
 }
 
+const VALID_EVENT_TYPES = new Set(['investment', 'expense', 'return']);
+const VALID_EXPENSE_CATEGORIES = new Set(['tip', 'food', 'drink', 'travel', 'lodging', 'other']);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function sanitizeSessionRecord(value: unknown): Session | null {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const id = value.id;
+  const mode = value.mode;
+  const events = value.events;
+  const startedAt = value.startedAt;
+  const endedAt = value.endedAt;
+  const updatedAt = value.updatedAt;
+
+  if (typeof id !== 'string' || id.trim().length === 0) {
+    return null;
+  }
+
+  if (mode !== 'cash' && mode !== 'tournament') {
+    return null;
+  }
+
+  if (!Array.isArray(events)) {
+    return null;
+  }
+
+  if (!isFiniteNumber(startedAt) || startedAt <= 0) {
+    return null;
+  }
+
+  if (!isFiniteNumber(endedAt) || endedAt <= 0 || endedAt < startedAt) {
+    return null;
+  }
+
+  if (!isFiniteNumber(updatedAt) || updatedAt <= 0) {
+    return null;
+  }
+
+  const stakesRaw = value.stakes;
+  const locationRaw = value.location;
+
+  if (stakesRaw !== undefined && typeof stakesRaw !== 'string') {
+    return null;
+  }
+
+  if (locationRaw !== undefined && typeof locationRaw !== 'string') {
+    return null;
+  }
+
+  const sanitizedEvents: Session['events'] = [];
+
+  for (const event of events) {
+    if (!isPlainObject(event)) {
+      return null;
+    }
+
+    const eventId = event.id;
+    const eventType = event.type;
+    const amount = event.amount;
+    const timestamp = event.timestamp;
+    const category = event.category;
+    const note = event.note;
+
+    if (typeof eventId !== 'string' || eventId.trim().length === 0) {
+      return null;
+    }
+
+    if (!VALID_EVENT_TYPES.has(String(eventType))) {
+      return null;
+    }
+
+    if (!isFiniteNumber(amount) || amount < 0 || !Number.isInteger(amount)) {
+      return null;
+    }
+
+    if (!isFiniteNumber(timestamp) || timestamp <= 0) {
+      return null;
+    }
+
+    if (category !== undefined && !VALID_EXPENSE_CATEGORIES.has(String(category))) {
+      return null;
+    }
+
+    if (note !== undefined && typeof note !== 'string') {
+      return null;
+    }
+
+    const eventTypeValue = eventType as 'investment' | 'expense' | 'return';
+
+    sanitizedEvents.push({
+      id: eventId,
+      type: eventTypeValue,
+      amount,
+      timestamp,
+      category: category as undefined | 'tip' | 'food' | 'drink' | 'travel' | 'lodging' | 'other',
+      note
+    });
+  }
+
+  const stakes = typeof stakesRaw === 'string' ? stakesRaw.trim() : '';
+  const location = typeof locationRaw === 'string' ? locationRaw.trim() : '';
+
+  return {
+    id,
+    mode,
+    stakes: stakes ? stakes : undefined,
+    location: location ? location : undefined,
+    events: sanitizedEvents,
+    startedAt,
+    endedAt,
+    updatedAt
+  };
+}
 export async function renderSessionsView(service: SessionService): Promise<HTMLElement> {
   let completed = (await service.getCompletedSessions())
     .slice()
@@ -475,8 +597,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         </div>
 
         <div class="sessions-filter-export">
+          <button id="sessionsImportButton" class="sessions-export-icon-btn" type="button" aria-label="Import sessions">&#8593;</button>
           <button id="sessionsExportMenuButton" class="sessions-export-icon-btn" type="button" aria-label="Export sessions">&#8595;</button>
           <button id="sessionsManualAddButton" class="sessions-export-icon-btn" type="button" aria-label="Add session">+</button>
+          <input id="sessionsImportInput" type="file" accept="application/json" hidden />
           <div id="sessionsExportMenu" class="sessions-export-menu" hidden>
             <button type="button" data-format="json">JSON</button>
             <button type="button" data-format="csv">CSV</button>
@@ -581,8 +705,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const typeSelect = container.querySelector('#sessionsTypeFilter') as HTMLSelectElement;
   const locationSelect = container.querySelector('#sessionsLocationFilter') as HTMLSelectElement;
   const dateRangeSelect = container.querySelector('#sessionsDateRangeFilter') as HTMLSelectElement;
+  const importButton = container.querySelector('#sessionsImportButton') as HTMLButtonElement;
   const exportMenuButton = container.querySelector('#sessionsExportMenuButton') as HTMLButtonElement;
   const manualAddButton = container.querySelector('#sessionsManualAddButton') as HTMLButtonElement;
+  const importInput = container.querySelector('#sessionsImportInput') as HTMLInputElement;
   const exportMenu = container.querySelector('#sessionsExportMenu') as HTMLDivElement;
   const exportMenuItems = Array.from(container.querySelectorAll('#sessionsExportMenu button')) as HTMLButtonElement[];
   const sortButtons = Array.from(container.querySelectorAll('.sessions-sort-btn')) as HTMLButtonElement[];
@@ -697,6 +823,134 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     downloadTextFile(buildSessionsCsv(filtered), `sessions-${now}.csv`, 'text/csv;charset=utf-8');
   };
 
+  const openImportStatsDialog = (added: number, overwritten: number, rejected: number) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'sheet-backdrop';
+
+    backdrop.innerHTML = `
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="importStatsTitle">
+        <h2 id="importStatsTitle">Import Complete</h2>
+        <div class="sheet-form">
+          <p><strong>${added}</strong> records added.</p>
+          <p><strong>${overwritten}</strong> records merged / overwritten.</p>
+          <p><strong>${rejected}</strong> records rejected.</p>
+          <div class="sheet-actions">
+            <button id="importStatsClose" type="button" class="session-end-btn">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const close = () => {
+      document.removeEventListener('keydown', onKeyDown);
+      backdrop.remove();
+      navigate('sessions');
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        close();
+      }
+    };
+
+    container.appendChild(backdrop);
+
+    const closeButton = backdrop.querySelector('#importStatsClose') as HTMLButtonElement;
+    closeButton.addEventListener('click', close);
+    backdrop.addEventListener('click', event => {
+      if (event.target === backdrop) {
+        close();
+      }
+    });
+    document.addEventListener('keydown', onKeyDown);
+  };
+
+  const openImportErrorDialog = (message: string) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'sheet-backdrop';
+
+    backdrop.innerHTML = `
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="importErrorTitle">
+        <h2 id="importErrorTitle">Import Failed</h2>
+        <div class="sheet-form">
+          <p>${escapeHtml(message)}</p>
+          <div class="sheet-actions">
+            <button id="importErrorClose" type="button" class="session-end-btn">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const close = () => {
+      document.removeEventListener('keydown', onKeyDown);
+      backdrop.remove();
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        close();
+      }
+    };
+
+    container.appendChild(backdrop);
+
+    const closeButton = backdrop.querySelector('#importErrorClose') as HTMLButtonElement;
+    closeButton.addEventListener('click', close);
+    backdrop.addEventListener('click', event => {
+      if (event.target === backdrop) {
+        close();
+      }
+    });
+    document.addEventListener('keydown', onKeyDown);
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const content = (await file.text()).replace(/^\uFEFF/, '').trim();
+      if (!content) {
+        openImportErrorDialog('The selected JSON file is empty.');
+        return;
+      }
+
+      const parsed = JSON.parse(content) as unknown;
+      const records = Array.isArray(parsed)
+        ? parsed
+        : (isPlainObject(parsed) && Array.isArray(parsed.sessions) ? parsed.sessions : null);
+
+      if (!records) {
+        openImportErrorDialog('Expected a JSON array of sessions.');
+        return;
+      }
+
+      if (records.length === 0) {
+        openImportErrorDialog('No sessions found in the selected file.');
+        return;
+      }
+
+      const valid: Session[] = [];
+      let rejected = 0;
+
+      for (const record of records) {
+        const sanitized = sanitizeSessionRecord(record);
+        if (sanitized) {
+          valid.push(sanitized);
+        } else {
+          rejected += 1;
+        }
+      }
+
+      if (valid.length === 0) {
+        openImportStatsDialog(0, 0, rejected);
+        return;
+      }
+
+      const importResult = await service.mergeSessionRecords(valid);
+      openImportStatsDialog(importResult.added, importResult.overwritten, rejected);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to read import file.';
+      openImportErrorDialog(message);
+    }
+  };
   const updateCumulativeChart = (sessions: Session[]) => {
     const chronological = sessions.slice().sort((a, b) => a.startedAt - b.startedAt);
 
@@ -1644,6 +1898,22 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     navigate('start');
   });
 
+  importButton.addEventListener('click', event => {
+    event.stopPropagation();
+    hideExportMenu();
+    importInput.value = '';
+    importInput.click();
+  });
+
+  importInput.addEventListener('change', async () => {
+    const file = importInput.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    await handleImportFile(file);
+  });
+
   exportMenuButton.addEventListener('click', event => {
     event.stopPropagation();
     exportMenu.hidden = !exportMenu.hidden;
@@ -1833,6 +2103,14 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
+
+
+
+
+
+
 
 
 

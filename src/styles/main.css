@@ -473,6 +473,7 @@ html, body {
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .sessions-export-icon-btn {
@@ -578,4 +579,5 @@ html, body {
 .sessions-sort-btn-active {
   color: var(--gold);
 }
+
 
