@@ -50,6 +50,40 @@ export function parseDollarsToCents(rawValue: string, allowZero = false, maxDoll
   return Math.round(amount * 100);
 }
 
+export function formatMoney(cents: number, withPlus = false): string {
+  const sign = cents < 0 ? '-' : (withPlus && cents > 0 ? '+' : '');
+  return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
+}
+
+export function celebratePositiveCashResult(profitCents: number): void {
+  if (profitCents <= 0) {
+    return;
+  }
+
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    navigator.vibrate([100, 60, 140]);
+  }
+
+  try {
+    const audio = new Audio('/audio/cha-ching.mp3');
+    audio.preload = 'auto';
+    audio.volume = 0.8;
+    void audio.play().catch(() => undefined);
+  } catch {
+    // Best-effort effect only.
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'cash-celebration';
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.textContent = formatMoney(profitCents, true);
+  document.body.appendChild(overlay);
+
+  window.setTimeout(() => {
+    overlay.remove();
+  }, 1500);
+}
+
 export function attachSheetCloseHandlers(backdrop: HTMLDivElement, closeButton: HTMLButtonElement): () => void {
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {

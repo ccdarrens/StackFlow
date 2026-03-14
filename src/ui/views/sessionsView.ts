@@ -677,7 +677,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       </div>
 
       <div id="sessionsCashLengthProfitCard" class="sessions-chart-card" hidden>
-        <h3>Cash Game Session Length vs Profit</h3>
+        <h3>Cash Game Length vs Profit</h3>
         <div class="sessions-chart-wrap">
           <canvas id="sessionsCashLengthProfitChart"></canvas>
         </div>

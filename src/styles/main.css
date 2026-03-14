@@ -618,6 +618,38 @@ html, body {
   color: var(--gold);
 }
 
+.cash-celebration {
+  position: fixed;
+  left: 50%;
+  bottom: 18vh;
+  transform: translateX(-50%);
+  z-index: 1200;
+  pointer-events: none;
+  font-size: clamp(2.2rem, 9vw, 4.8rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #8cf7b2;
+  text-shadow: 0 0 18px rgba(70, 214, 120, 0.45), 0 10px 35px rgba(0, 0, 0, 0.55);
+  animation: cash-celebration-rise 2.1s ease-out forwards;
+}
+
+@keyframes cash-celebration-rise {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(28px) scale(0.82);
+  }
+
+  15% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-72vh) scale(1.08);
+  }
+}
+
 
 
 

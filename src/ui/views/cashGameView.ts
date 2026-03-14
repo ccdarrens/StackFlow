@@ -3,7 +3,13 @@ import type { Session } from '../../models/session';
 import type { ExpenseCategory } from '../../models/event';
 import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
-import { attachSheetCloseHandlers, formatDateTimeLocal, formatDuration, parseDollarsToCents } from '../viewHelpers';
+import {
+  attachSheetCloseHandlers,
+  celebratePositiveCashResult,
+  formatDateTimeLocal,
+  formatDuration,
+  parseDollarsToCents
+} from '../viewHelpers';
 
 const EXPENSE_CATEGORIES: ExpenseCategory[] = ['tip', 'food', 'drink', 'travel', 'other'];
 const LAST_EXPENSE_CATEGORY_KEY = 'stackflow.cash.expenseCategory.v1';
@@ -185,7 +191,7 @@ function openExpenseSheet(service: SessionService): void {
   });
 }
 
-function openEndSessionSheet(service: SessionService): void {
+function openEndSessionSheet(session: Session, service: SessionService): void {
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
 
@@ -244,6 +250,8 @@ function openEndSessionSheet(service: SessionService): void {
     }
 
     const note = cashoutNoteInput.value.trim();
+    const totals = calculateSessionTotals(session);
+    const finalNetProfit = totals.returned + cashoutCents - totals.invested - totals.expenses;
 
     saveButton.disabled = true;
 
@@ -251,6 +259,9 @@ function openEndSessionSheet(service: SessionService): void {
       await service.addReturn(cashoutCents, note || undefined, timestamp);
       await service.endSession(timestamp);
       close();
+      if (finalNetProfit > 0) {
+        celebratePositiveCashResult(finalNetProfit);
+      }
       navigate('start');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to end session.';
@@ -304,7 +315,7 @@ export async function renderCashGameView(session: Session, service: SessionServi
 
   container.querySelector('#endSession')!
     .addEventListener('click', () => {
-      openEndSessionSheet(service);
+      openEndSessionSheet(session, service);
     });
 
   return container;
