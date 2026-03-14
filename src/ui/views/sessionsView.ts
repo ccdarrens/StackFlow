@@ -1741,8 +1741,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           <label for="sessionEditEndedAt">End Date/Time</label>
           <input id="sessionEditEndedAt" type="datetime-local" required value="${session.endedAt ? formatDateTimeLocal(session.endedAt) : ''}" />
 
-          <label>Events (Read-only)</label>
-          <div class="session-edit-events">${eventItems ? `<ul>${eventItems}</ul>` : '<p>No events</p>'}</div>
+          <details class="session-edit-events-panel">
+            <summary>Events (Read-only)${session.events.length ? ` (${session.events.length})` : ''}</summary>
+            <div class="session-edit-events">${eventItems ? `<ul>${eventItems}</ul>` : '<p>No events</p>'}</div>
+          </details>
 
           <p id="sessionEditError" class="sheet-error"></p>
 
@@ -2103,6 +2105,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
+
+
 
 
 

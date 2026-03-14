@@ -5,7 +5,8 @@ import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
 import { attachSheetCloseHandlers, formatDateTimeLocal, formatDuration, parseDollarsToCents } from '../viewHelpers';
 
-const EXPENSE_CATEGORIES: ExpenseCategory[] = ['tip', 'food', 'drink', 'travel', 'lodging', 'other'];
+const EXPENSE_CATEGORIES: ExpenseCategory[] = ['tip', 'food', 'drink', 'travel', 'other'];
+const LAST_EXPENSE_CATEGORY_KEY = 'stackflow.tournament.expenseCategory.v1';
 
 function openRebuyAddonSheet(service: SessionService): void {
   const backdrop = document.createElement('div');
@@ -89,9 +90,6 @@ function openExpenseSheet(service: SessionService): void {
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="expenseTitle">
       <h2 id="expenseTitle">Add Expense</h2>
       <form id="expenseForm" class="sheet-form">
-        <label for="expenseAt">Date & Time</label>
-        <input id="expenseAt" type="datetime-local" required />
-
         <label for="expenseAmount">Amount ($)</label>
         <input id="expenseAmount" type="text" inputmode="decimal" placeholder="e.g. 5" required />
 
@@ -100,6 +98,9 @@ function openExpenseSheet(service: SessionService): void {
 
         <label for="expenseNote">Note (Optional)</label>
         <input id="expenseNote" type="text" placeholder="Optional note" />
+
+        <label for="expenseAt">Date & Time</label>
+        <input id="expenseAt" type="datetime-local" required />
 
         <p id="expenseError" class="sheet-error"></p>
 
@@ -122,7 +123,10 @@ function openExpenseSheet(service: SessionService): void {
   const cancelButton = backdrop.querySelector('#cancelExpense') as HTMLButtonElement;
   const saveButton = backdrop.querySelector('#saveExpense') as HTMLButtonElement;
 
-  let selectedCategory: ExpenseCategory = 'tip';
+  const savedCategory = localStorage.getItem(LAST_EXPENSE_CATEGORY_KEY);
+  let selectedCategory: ExpenseCategory = EXPENSE_CATEGORIES.includes(savedCategory as ExpenseCategory)
+    ? (savedCategory as ExpenseCategory)
+    : 'tip';
 
   expenseAtInput.value = formatDateTimeLocal(new Date());
   expenseAmountInput.focus();
@@ -170,6 +174,7 @@ function openExpenseSheet(service: SessionService): void {
 
     try {
       await service.addExpense(amountCents, selectedCategory, note || undefined, timestamp);
+      localStorage.setItem(LAST_EXPENSE_CATEGORY_KEY, selectedCategory);
       close();
       navigate('start');
     } catch (error) {
@@ -263,7 +268,7 @@ export async function renderTournamentView(session: Session, service: SessionSer
 
   container.innerHTML = `
       <div class="sessions-card tournament-card">
-        <h1>Active Tournament Session</h1>
+        <h1>Tournament Session</h1>
         <div class="tournament-meta">
           <p>${session.stakes ?? '-'} @ ${session.location ?? '-'}</p>
           <p><strong>Duration:</strong> <span id="activeDuration">${formatDuration(Date.now() - start)}</span></p>
@@ -304,6 +309,10 @@ export async function renderTournamentView(session: Session, service: SessionSer
 
   return container;
 }
+
+
+
+
 
 
 

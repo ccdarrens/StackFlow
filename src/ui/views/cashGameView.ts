@@ -5,7 +5,8 @@ import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
 import { attachSheetCloseHandlers, formatDateTimeLocal, formatDuration, parseDollarsToCents } from '../viewHelpers';
 
-const EXPENSE_CATEGORIES: ExpenseCategory[] = ['tip', 'food', 'drink', 'travel', 'lodging', 'other'];
+const EXPENSE_CATEGORIES: ExpenseCategory[] = ['tip', 'food', 'drink', 'travel', 'other'];
+const LAST_EXPENSE_CATEGORY_KEY = 'stackflow.cash.expenseCategory.v1';
 
 function openAddonSheet(service: SessionService): void {
   const backdrop = document.createElement('div');
@@ -122,7 +123,10 @@ function openExpenseSheet(service: SessionService): void {
   const cancelButton = backdrop.querySelector('#cancelExpense') as HTMLButtonElement;
   const saveButton = backdrop.querySelector('#saveExpense') as HTMLButtonElement;
 
-  let selectedCategory: ExpenseCategory = 'tip';
+  const savedCategory = localStorage.getItem(LAST_EXPENSE_CATEGORY_KEY);
+  let selectedCategory: ExpenseCategory = EXPENSE_CATEGORIES.includes(savedCategory as ExpenseCategory)
+    ? (savedCategory as ExpenseCategory)
+    : 'tip';
 
   expenseAtInput.value = formatDateTimeLocal(new Date());
   expenseAmountInput.focus();
@@ -170,6 +174,7 @@ function openExpenseSheet(service: SessionService): void {
 
     try {
       await service.addExpense(amountCents, selectedCategory, note || undefined, timestamp);
+      localStorage.setItem(LAST_EXPENSE_CATEGORY_KEY, selectedCategory);
       close();
       navigate('start');
     } catch (error) {
@@ -263,7 +268,7 @@ export async function renderCashGameView(session: Session, service: SessionServi
 
   container.innerHTML = `
       <div class="sessions-card cash-card">
-        <h1>Active Cash Session</h1>
+        <h1>Cash Session</h1>
         <div class="cash-meta">
           <p>${session.stakes ?? '-'} @ ${session.location ?? '-'}</p>
           <p><strong>Duration:</strong> <span id="activeDuration">${formatDuration(Date.now() - start)}</span></p>
@@ -304,6 +309,9 @@ export async function renderCashGameView(session: Session, service: SessionServi
 
   return container;
 }
+
+
+
 
 
 
