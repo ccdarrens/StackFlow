@@ -55,7 +55,7 @@ export function formatMoney(cents: number, withPlus = false): string {
   return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
 }
 
-export function celebratePositiveCashResult(profitCents: number): void {
+export function celebratePositiveResult(profitCents: number): void {
   if (profitCents <= 0) {
     return;
   }

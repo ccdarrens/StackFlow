@@ -3,7 +3,13 @@ import type { Session } from '../../models/session';
 import type { ExpenseCategory } from '../../models/event';
 import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
-import { attachSheetCloseHandlers, formatDateTimeLocal, formatDuration, parseDollarsToCents } from '../viewHelpers';
+import {
+  attachSheetCloseHandlers,
+  celebratePositiveResult,
+  formatDateTimeLocal,
+  formatDuration,
+  parseDollarsToCents
+} from '../viewHelpers';
 
 const EXPENSE_CATEGORIES: ExpenseCategory[] = ['tip', 'food', 'drink', 'travel', 'other'];
 const LAST_EXPENSE_CATEGORY_KEY = 'stackflow.tournament.expenseCategory.v1';
@@ -185,13 +191,13 @@ function openExpenseSheet(service: SessionService): void {
   });
 }
 
-function openEndSessionSheet(service: SessionService): void {
+function openEndSessionSheet(session: Session, service: SessionService): void {
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
 
   backdrop.innerHTML = `
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="endSessionTitle">
-      <h2 id="endSessionTitle">End Session</h2>
+      <h2 id="endSessionTitle">Exit Tournament</h2>
       <form id="endSessionForm" class="sheet-form">
         <label for="payoutAmount">Payout Amount ($)</label>
         <input id="payoutAmount" type="text" inputmode="decimal" value="0" required autofocus />
@@ -244,6 +250,8 @@ function openEndSessionSheet(service: SessionService): void {
     }
 
     const note = payoutNoteInput.value.trim();
+    const totals = calculateSessionTotals(session);
+    const finalNetProfit = totals.returned + payoutCents - totals.invested - totals.expenses;
 
     saveButton.disabled = true;
 
@@ -251,6 +259,9 @@ function openEndSessionSheet(service: SessionService): void {
       await service.addReturn(payoutCents, note || undefined, timestamp);
       await service.endSession(timestamp);
       close();
+      if (finalNetProfit > 0) {
+        celebratePositiveResult(finalNetProfit);
+      }
       navigate('start');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to end session.';
@@ -304,7 +315,7 @@ export async function renderTournamentView(session: Session, service: SessionSer
 
   container.querySelector('#endSession')!
     .addEventListener('click', () => {
-      openEndSessionSheet(service);
+      openEndSessionSheet(session, service);
     });
 
   return container;

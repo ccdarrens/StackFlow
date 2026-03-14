@@ -5,7 +5,7 @@ import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
 import {
   attachSheetCloseHandlers,
-  celebratePositiveCashResult,
+  celebratePositiveResult,
   formatDateTimeLocal,
   formatDuration,
   parseDollarsToCents
@@ -13,6 +13,7 @@ import {
 
 const EXPENSE_CATEGORIES: ExpenseCategory[] = ['tip', 'food', 'drink', 'travel', 'other'];
 const LAST_EXPENSE_CATEGORY_KEY = 'stackflow.cash.expenseCategory.v1';
+const LAST_EXPENSE_CHIPS_KEY = 'stackflow.cash.expensePaidWithChips.v1';
 
 function openAddonSheet(service: SessionService): void {
   const backdrop = document.createElement('div');
@@ -102,6 +103,12 @@ function openExpenseSheet(service: SessionService): void {
         <label>Category</label>
         <div id="expenseCategoryPills" class="pill-row"></div>
 
+        <label>Paid With Chips?</label>
+        <div id="expenseChipsPills" class="pill-row">
+          <button type="button" class="pill-btn pill-btn-active" data-expense-chips="no" aria-pressed="true">No</button>
+          <button type="button" class="pill-btn" data-expense-chips="yes" aria-pressed="false">Yes</button>
+        </div>
+
         <label for="expenseNote">Note (Optional)</label>
         <input id="expenseNote" type="text" placeholder="Optional note" />
 
@@ -125,6 +132,7 @@ function openExpenseSheet(service: SessionService): void {
   const expenseAmountInput = backdrop.querySelector('#expenseAmount') as HTMLInputElement;
   const expenseNoteInput = backdrop.querySelector('#expenseNote') as HTMLInputElement;
   const categoryPills = backdrop.querySelector('#expenseCategoryPills') as HTMLDivElement;
+  const chipsPills = Array.from(backdrop.querySelectorAll('[data-expense-chips]')) as HTMLButtonElement[];
   const errorEl = backdrop.querySelector('#expenseError') as HTMLParagraphElement;
   const cancelButton = backdrop.querySelector('#cancelExpense') as HTMLButtonElement;
   const saveButton = backdrop.querySelector('#saveExpense') as HTMLButtonElement;
@@ -133,6 +141,7 @@ function openExpenseSheet(service: SessionService): void {
   let selectedCategory: ExpenseCategory = EXPENSE_CATEGORIES.includes(savedCategory as ExpenseCategory)
     ? (savedCategory as ExpenseCategory)
     : 'tip';
+  let paidWithChips = localStorage.getItem(LAST_EXPENSE_CHIPS_KEY) === 'yes';
 
   expenseAtInput.value = formatDateTimeLocal(new Date());
   expenseAmountInput.focus();
@@ -155,6 +164,24 @@ function openExpenseSheet(service: SessionService): void {
   };
 
   renderCategoryPills();
+
+  for (const pill of chipsPills) {
+    const isActive = (pill.dataset.expenseChips === 'yes') === paidWithChips;
+    pill.classList.toggle('pill-btn-active', isActive);
+    pill.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  }
+
+  for (const pill of chipsPills) {
+    pill.addEventListener('click', () => {
+      paidWithChips = pill.dataset.expenseChips === 'yes';
+
+      for (const otherPill of chipsPills) {
+        const isActive = otherPill === pill;
+        otherPill.classList.toggle('pill-btn-active', isActive);
+        otherPill.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      }
+    });
+  }
 
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
 
@@ -180,7 +207,14 @@ function openExpenseSheet(service: SessionService): void {
 
     try {
       await service.addExpense(amountCents, selectedCategory, note || undefined, timestamp);
+      if (paidWithChips) {
+        const returnNote = note
+          ? `${note} (chips used)`
+          : `${selectedCategory} paid with chips`;
+        await service.addReturn(amountCents, returnNote, timestamp);
+      }
       localStorage.setItem(LAST_EXPENSE_CATEGORY_KEY, selectedCategory);
+      localStorage.setItem(LAST_EXPENSE_CHIPS_KEY, paidWithChips ? 'yes' : 'no');
       close();
       navigate('start');
     } catch (error) {
@@ -260,7 +294,7 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
       await service.endSession(timestamp);
       close();
       if (finalNetProfit > 0) {
-        celebratePositiveCashResult(finalNetProfit);
+        celebratePositiveResult(finalNetProfit);
       }
       navigate('start');
     } catch (error) {
