@@ -262,7 +262,8 @@ function openBreakSheet(session: Session, service: SessionService): void {
   const cancelButton = backdrop.querySelector('#cancelBreak') as HTMLButtonElement;
   const saveButton = backdrop.querySelector('#saveBreak') as HTMLButtonElement;
 
-  breakAtInput.value = formatDateTimeLocalSeconds(new Date(Date.now() - 20_000));
+  const defaultBreakStartMs = Math.max(session.startedAt, Date.now() - 20_000);
+  breakAtInput.value = formatDateTimeLocalSeconds(new Date(defaultBreakStartMs));
   durationInput.focus();
   durationInput.select();
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
