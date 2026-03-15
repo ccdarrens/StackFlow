@@ -453,6 +453,19 @@ html, body {
   text-shadow: 0 4px 20px rgba(201, 162, 39, 0.35);
 }
 
+.home-logo-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.home-logo-toggle:focus-visible {
+  outline: 2px solid rgba(201, 162, 39, 0.9);
+  outline-offset: 6px;
+  border-radius: 12px;
+}
+
 .home-logo {
   width: min(320px, 70vw);
   height: auto;
@@ -747,6 +760,7 @@ html, body {
     display: block;
   }
 }
+
 
 
 

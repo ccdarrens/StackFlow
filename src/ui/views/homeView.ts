@@ -400,6 +400,7 @@ async function openTournamentStartSheet(service: SessionService): Promise<void> 
   });
 }
 export async function renderHomeView(service: SessionService): Promise<HTMLElement> {
+  const qrCodeUrl = `${import.meta.env.BASE_URL}images/stackflow-qr.png`;
 
   const container = document.createElement('div');
   container.className = 'app-container';
@@ -408,7 +409,20 @@ export async function renderHomeView(service: SessionService): Promise<HTMLEleme
     <div class="sessions-card home-card">
       <div class="home-header">
         <h1 class="home-brand">Stack Flow</h1>
-        <img class="home-logo" src="${logoTransparent}" alt="Stack Flow logo" />
+        <button
+          type="button"
+          id="homeLogoToggle"
+          class="home-logo-toggle"
+          aria-label="Toggle between Stack Flow logo and QR code"
+          aria-pressed="false"
+        >
+          <img
+            id="homeLogoImage"
+            class="home-logo"
+            src="${logoTransparent}"
+            alt="Stack Flow logo"
+          />
+        </button>
       </div>
 
       <div class="home-actions home-actions-vertical">
@@ -434,8 +448,20 @@ export async function renderHomeView(service: SessionService): Promise<HTMLEleme
       navigate('sessions');
     });
 
+  const logoToggle = container.querySelector('#homeLogoToggle') as HTMLButtonElement;
+  const logoImage = container.querySelector('#homeLogoImage') as HTMLImageElement;
+  let showingQrCode = false;
+
+  logoToggle.addEventListener('click', () => {
+    showingQrCode = !showingQrCode;
+    logoToggle.setAttribute('aria-pressed', showingQrCode ? 'true' : 'false');
+    logoImage.src = showingQrCode ? qrCodeUrl : logoTransparent;
+    logoImage.alt = showingQrCode ? 'Stack Flow QR code' : 'Stack Flow logo';
+  });
+
   return container;
 }
+
 
 
 
