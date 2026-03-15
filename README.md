@@ -43,7 +43,7 @@ You can use StackFlow in two ways:
 
 If you have StackFlow open on your desktop and want to jump to it on your phone, scan this QR code:
 
-![StackFlow QR code](public/images/stackflow-qr.png)
+<img src="public/images/stackflow-qr.png" alt="StackFlow QR code" width="60" />
 
 Direct link: `https://ccdarrens.github.io/StackFlow`
 
@@ -79,3 +79,5 @@ Developer setup, test commands, architecture notes, and release workflow are in 
 ## License
 
 MIT - see [LICENSE](LICENSE).
+
+
