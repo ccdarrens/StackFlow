@@ -2,17 +2,53 @@ import type { SessionService } from '../../services/sessionService';
 import type { Session } from '../../models/session';
 import type { ExpenseCategory } from '../../models/event';
 import { calculateSessionTotals } from '../../stats/calculators';
+import { getActiveBreak, getSessionDurationMs } from '../../models/session';
 import { navigate } from '../router';
 import {
   attachSheetCloseHandlers,
   celebratePositiveResult,
   formatDateTimeLocal,
   formatDuration,
-  parseDollarsToCents
+  formatDateTimeLocalSeconds,
+  parseDollarsToCents,
+  playBreakWarningSignal,
+  primeBreakWarningSignal
 } from '../viewHelpers';
 
 const EXPENSE_CATEGORIES: ExpenseCategory[] = ['tip', 'food', 'drink', 'travel', 'other'];
 const LAST_EXPENSE_CATEGORY_KEY = 'stackflow.tournament.expenseCategory.v1';
+const BREAK_DURATION_KEY_PREFIX = 'stackflow.tournament.breakDuration';
+const DEFAULT_BREAK_MINUTES = 15;
+const BREAK_WARNING_MS = 60_000;
+
+function getBreakWarningKey(sessionId: string, breakId: string): string {
+  return `stackflow.breakWarning.${sessionId}.${breakId}`;
+}
+
+function hasBreakWarningSent(sessionId: string, breakId: string): boolean {
+  return localStorage.getItem(getBreakWarningKey(sessionId, breakId)) === 'true';
+}
+
+function markBreakWarningSent(sessionId: string, breakId: string): void {
+  localStorage.setItem(getBreakWarningKey(sessionId, breakId), 'true');
+}
+
+function getBreakDurationPreferenceKey(session: Session): string {
+  const location = (session.location ?? '').trim().toLowerCase() || 'unknown-location';
+  const stakes = (session.stakes ?? '').trim().toLowerCase() || 'unknown-stakes';
+  const scope = `${location}__${stakes}`.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return `${BREAK_DURATION_KEY_PREFIX}.${scope || 'default'}`;
+}
+
+function loadBreakDurationPreference(session: Session): number {
+  const raw = localStorage.getItem(getBreakDurationPreferenceKey(session));
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : DEFAULT_BREAK_MINUTES;
+}
+
+function saveBreakDurationPreference(session: Session, durationMinutes: number): void {
+  localStorage.setItem(getBreakDurationPreferenceKey(session), String(durationMinutes));
+}
 
 function openRebuyAddonSheet(service: SessionService): void {
   const backdrop = document.createElement('div');
@@ -75,6 +111,7 @@ function openRebuyAddonSheet(service: SessionService): void {
     const note = noteInput.value.trim() || 'rebuy';
 
     saveButton.disabled = true;
+    primeBreakWarningSignal();
 
     try {
       await service.addInvestment(amountCents, note, timestamp);
@@ -177,6 +214,7 @@ function openExpenseSheet(service: SessionService): void {
     const note = expenseNoteInput.value.trim();
 
     saveButton.disabled = true;
+    primeBreakWarningSignal();
 
     try {
       await service.addExpense(amountCents, selectedCategory, note || undefined, timestamp);
@@ -185,6 +223,82 @@ function openExpenseSheet(service: SessionService): void {
       navigate('start');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to save expense.';
+      errorEl.textContent = message;
+      saveButton.disabled = false;
+    }
+  });
+}
+
+function openBreakSheet(session: Session, service: SessionService): void {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+
+  backdrop.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="breakTitle">
+      <h2 id="breakTitle">Start Break</h2>
+      <form id="breakForm" class="sheet-form">
+        <label for="breakDuration">Break Length (Minutes)</label>
+        <input id="breakDuration" type="number" inputmode="numeric" min="1" step="1" value="${loadBreakDurationPreference(session)}" required autofocus />
+
+        <label for="breakAt">Break Start Time</label>
+        <input id="breakAt" type="datetime-local" step="1" required />
+
+        <p id="breakError" class="sheet-error"></p>
+
+        <div class="sheet-actions">
+          <button type="button" id="cancelBreak" class="ghost-btn">Cancel</button>
+          <button type="submit" id="saveBreak">Start Break</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const form = backdrop.querySelector('#breakForm') as HTMLFormElement;
+  const durationInput = backdrop.querySelector('#breakDuration') as HTMLInputElement;
+  const breakAtInput = backdrop.querySelector('#breakAt') as HTMLInputElement;
+  const errorEl = backdrop.querySelector('#breakError') as HTMLParagraphElement;
+  const cancelButton = backdrop.querySelector('#cancelBreak') as HTMLButtonElement;
+  const saveButton = backdrop.querySelector('#saveBreak') as HTMLButtonElement;
+
+  const defaultBreakStartMs = Math.max(session.startedAt, Date.now() - 20_000);
+  breakAtInput.value = formatDateTimeLocalSeconds(new Date(defaultBreakStartMs));
+  durationInput.focus();
+  durationInput.select();
+  const close = attachSheetCloseHandlers(backdrop, cancelButton);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    errorEl.textContent = '';
+
+    const durationMinutes = Number.parseInt(durationInput.value.trim(), 10);
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 1) {
+      errorEl.textContent = 'Break length must be at least 1 minute.';
+      return;
+    }
+
+    const timestamp = breakAtInput.value ? new Date(breakAtInput.value).getTime() : Number.NaN;
+    if (!Number.isFinite(timestamp)) {
+      errorEl.textContent = 'Please enter a valid break start time.';
+      return;
+    }
+
+    if (timestamp < session.startedAt) {
+      errorEl.textContent = 'Break start must be during the current session.';
+      return;
+    }
+
+    saveButton.disabled = true;
+    primeBreakWarningSignal();
+
+    try {
+      await service.addBreak(durationMinutes, timestamp);
+      saveBreakDurationPreference(session, durationMinutes);
+      close();
+      navigate('start');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to start break.';
       errorEl.textContent = message;
       saveButton.disabled = false;
     }
@@ -254,6 +368,7 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
     const finalNetProfit = totals.returned + payoutCents - totals.invested - totals.expenses;
 
     saveButton.disabled = true;
+    primeBreakWarningSignal();
 
     try {
       await service.addReturn(payoutCents, note || undefined, timestamp);
@@ -274,15 +389,21 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
 export async function renderTournamentView(session: Session, service: SessionService): Promise<HTMLElement> {
   const container = document.createElement('div');
   container.className = 'app-container';
-  const start = session.startedAt;
   const totals = calculateSessionTotals(session);
+  const initialActiveBreak = getActiveBreak(session);
+  const initialRemainingMs = initialActiveBreak
+    ? Math.max(0, initialActiveBreak.startedAt + initialActiveBreak.durationMinutes * 60_000 - Date.now())
+    : 0;
 
   container.innerHTML = `
       <div class="sessions-card tournament-card">
-        <h1>Tournament Session</h1>
+        <h1>Tournament</h1>
         <div class="tournament-meta">
           <p>${session.stakes ?? '-'} @ ${session.location ?? '-'}</p>
-          <p><strong>Duration:</strong> <span id="activeDuration">${formatDuration(Date.now() - start)}</span></p>
+          <p><strong>Duration:</strong> <span id="activeDuration">${formatDuration(getSessionDurationMs(session, Date.now()))}</span></p>
+          <p id="activeBreakStatus" class="session-break-status" ${initialActiveBreak ? '' : 'hidden'}>
+            <strong>In Break:</strong> <span id="activeBreakRemaining">${formatDuration(initialRemainingMs)}</span> remaining
+          </p>
         </div>
 
         <div class="tournament-stats">
@@ -293,14 +414,52 @@ export async function renderTournamentView(session: Session, service: SessionSer
         <div id="actions" class="session-actions-grid">
           <button id="rebuy" class="session-action-btn">Rebuy / Addon</button>
           <button id="expense" class="session-action-btn">Expense</button>
+          <button id="startBreak" class="session-action-btn" ${initialActiveBreak ? 'disabled' : ''}>${initialActiveBreak ? 'In Break' : 'Start Break'}</button>
         </div>
         <button id="endSession" class="session-end-btn">Exit Tournament</button>
       </div>
   `;
 
-  const durationEl = container.querySelector('#activeDuration')!;
-  setInterval(() => {
-    durationEl.textContent = formatDuration(Date.now() - start);
+  const durationEl = container.querySelector('#activeDuration') as HTMLSpanElement;
+  const activeBreakStatusEl = container.querySelector('#activeBreakStatus') as HTMLParagraphElement;
+  const activeBreakRemainingEl = container.querySelector('#activeBreakRemaining') as HTMLSpanElement;
+  const startBreakButton = container.querySelector('#startBreak') as HTMLButtonElement;
+
+  const updateBreakState = () => {
+    const now = Date.now();
+    const activeBreak = getActiveBreak(session, now);
+
+    durationEl.textContent = formatDuration(getSessionDurationMs(session, now));
+
+    if (!activeBreak) {
+      activeBreakStatusEl.classList.remove('session-break-status-warning');
+      activeBreakStatusEl.hidden = true;
+      startBreakButton.disabled = false;
+      startBreakButton.textContent = 'Start Break';
+      return;
+    }
+
+    const remainingMs = Math.max(0, activeBreak.startedAt + activeBreak.durationMinutes * 60_000 - now);
+    activeBreakStatusEl.hidden = false;
+    activeBreakStatusEl.classList.toggle('session-break-status-warning', remainingMs <= BREAK_WARNING_MS && remainingMs > 0);
+    activeBreakRemainingEl.textContent = formatDuration(remainingMs);
+    startBreakButton.disabled = true;
+    startBreakButton.textContent = 'In Break';
+
+    if (remainingMs <= BREAK_WARNING_MS && remainingMs > 0 && !hasBreakWarningSent(session.id, activeBreak.id)) {
+      playBreakWarningSignal();
+      markBreakWarningSent(session.id, activeBreak.id);
+    }
+  };
+
+  updateBreakState();
+  const intervalId = window.setInterval(() => {
+    if (!container.isConnected) {
+      window.clearInterval(intervalId);
+      return;
+    }
+
+    updateBreakState();
   }, 1000);
 
   container.querySelector('#rebuy')!
@@ -312,6 +471,14 @@ export async function renderTournamentView(session: Session, service: SessionSer
     .addEventListener('click', () => {
       openExpenseSheet(service);
     });
+
+  startBreakButton.addEventListener('click', () => {
+    if (startBreakButton.disabled) {
+      return;
+    }
+
+    openBreakSheet(session, service);
+  });
 
   container.querySelector('#endSession')!
     .addEventListener('click', () => {

@@ -1,4 +1,4 @@
-import type { Session } from '../models/session';
+import type { Session, SessionBreak } from '../models/session';
 import type { EventType, ExpenseCategory, SessionEvent } from '../models/event';
 import { LocalStorageRepository } from '../storage/localStorageRepository';
 import type { SessionRepository } from '../storage/repository';
@@ -16,6 +16,8 @@ export interface SessionService {
   addReturn(amountCents: number, note?: string, overrideTimestamp?: number): Promise<Session>;
 
   addExpense(amountCents: number, category: ExpenseCategory, note?: string, overrideTimestamp?: number): Promise<Session>;
+
+  addBreak(durationMinutes: number, startedAtOverride?: number): Promise<Session>;
 
   endSession(overrideTimestamp?: number): Promise<Session>;
 
@@ -38,17 +40,12 @@ export class DefaultSessionService implements SessionService {
 
   constructor(private readonly repository: SessionRepository = new LocalStorageRepository()) {}
 
-  // ---------------------------
-  // Create Cash Session
-  // ---------------------------
-
   async createCashSession(
     stakes?: string,
     location?: string,
     initialBuyInCents: number = 0,
     startedAtOverride?: number
   ): Promise<Session> {
-
     const existing = await this.repository.getActiveSession();
     if (existing) {
       throw new Error('An active session already exists');
@@ -66,6 +63,7 @@ export class DefaultSessionService implements SessionService {
       stakes,
       location,
       events: [],
+      breaks: [],
       startedAt: now,
       updatedAt: now
     };
@@ -80,12 +78,7 @@ export class DefaultSessionService implements SessionService {
     return session;
   }
 
-  // ---------------------------
-  // Create Tournament Session
-  // ---------------------------
-
   async createTournamentSession(stakes?: string, location?: string, buyInCents: number = 0, startedAtOverride?: number): Promise<Session> {
-
     const existing = await this.repository.getActiveSession();
     if (existing) {
       throw new Error('An active session already exists');
@@ -103,6 +96,7 @@ export class DefaultSessionService implements SessionService {
       stakes,
       location,
       events: [],
+      breaks: [],
       startedAt: now,
       updatedAt: now
     };
@@ -183,12 +177,45 @@ export class DefaultSessionService implements SessionService {
     return session;
   }
 
-  // ---------------------------
-  // End Session
-  // ---------------------------
+  async addBreak(durationMinutes: number, startedAtOverride?: number): Promise<Session> {
+    const session = await this.requireActiveSession();
+    if (!isActive(session)) {
+      throw new Error('Cannot add break to closed session');
+    }
+
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 1) {
+      throw new Error('Break duration must be at least 1 minute');
+    }
+
+    const startedAt = startedAtOverride ?? Date.now();
+    if (!Number.isFinite(startedAt) || startedAt <= 0) {
+      throw new Error('Invalid break start time');
+    }
+
+    if (startedAt < session.startedAt) {
+      throw new Error('Break start must be during the current session');
+    }
+
+    const existingBreaks = Array.isArray(session.breaks) ? session.breaks : [];
+    const nextBreak = this.createBreak(durationMinutes, startedAt);
+    const nextBreakEnd = nextBreak.startedAt + nextBreak.durationMinutes * 60_000;
+
+    for (const item of existingBreaks) {
+      const existingEnd = item.startedAt + item.durationMinutes * 60_000;
+      const overlaps = nextBreak.startedAt < existingEnd && nextBreakEnd > item.startedAt;
+      if (overlaps) {
+        throw new Error('Breaks cannot overlap');
+      }
+    }
+
+    session.breaks = existingBreaks.concat(nextBreak).sort((left, right) => left.startedAt - right.startedAt);
+    session.updatedAt = Date.now();
+
+    await this.repository.saveSession(session);
+    return session;
+  }
 
   async endSession(overrideTimestamp?: number): Promise<Session> {
-
     const session = await this.requireActiveSession();
 
     if (!isActive(session)) {
@@ -245,6 +272,7 @@ export class DefaultSessionService implements SessionService {
       stakes: stakes ? stakes : undefined,
       location: location ? location : undefined,
       events: [],
+      breaks: [],
       startedAt: input.startedAt,
       endedAt: input.endedAt,
       updatedAt: now
@@ -262,6 +290,7 @@ export class DefaultSessionService implements SessionService {
     await this.repository.saveSession(session);
     return session;
   }
+
   async updateSessionRecord(
     sessionId: string,
     updates: { stakes?: string; location?: string; startedAt?: number; endedAt?: number | undefined }
@@ -319,8 +348,8 @@ export class DefaultSessionService implements SessionService {
     let overwritten = 0;
 
     for (const record of records) {
-      const current = existingById.get(record.id);
       await this.repository.saveSession(record);
+      const current = existingById.get(record.id);
       existingById.set(record.id, record);
 
       if (current) {
@@ -332,9 +361,6 @@ export class DefaultSessionService implements SessionService {
 
     return { added, overwritten };
   }
-  // ---------------------------
-  // Retrieval
-  // ---------------------------
 
   async getActiveSession(): Promise<Session | null> {
     return this.repository.getActiveSession();
@@ -349,15 +375,16 @@ export class DefaultSessionService implements SessionService {
     return sessions.filter(s => hasEnded(s));
   }
 
-  // ---------------------------
-  // Private Helpers
-  // ---------------------------
-
   private async requireActiveSession(): Promise<Session> {
     const session = await this.repository.getActiveSession();
     if (!session) {
       throw new Error('No active session');
     }
+
+    if (!Array.isArray(session.breaks)) {
+      session.breaks = [];
+    }
+
     return session;
   }
 
@@ -382,10 +409,11 @@ export class DefaultSessionService implements SessionService {
     };
   }
 
+  private createBreak(durationMinutes: number, startedAt: number): SessionBreak {
+    return {
+      id: generateId(),
+      startedAt,
+      durationMinutes
+    };
+  }
 }
-
-
-
-
-
-

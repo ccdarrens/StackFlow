@@ -1,6 +1,6 @@
 import Chart from 'chart.js/auto';
 import type { SessionService } from '../../services/sessionService';
-import type { Session } from '../../models/session';
+import { getSessionDurationMs, type Session } from '../../models/session';
 import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
 
@@ -8,7 +8,7 @@ type SessionFilterType = 'all' | 'cash' | 'tournament';
 type DateRangeFilter = 'all' | 'this_year' | 'this_month' | 'last_30_days' | 'last_90_days' | 'last_month' | 'last_year';
 type ExportFormat = 'json' | 'csv';
 
-type SortKey = 'profit' | 'date' | 'hours' | 'location' | 'type';
+type SortKey = 'profit' | 'date' | 'hours' | 'location' | 'stakes' | 'type';
 type SortDirection = 'asc' | 'desc';
 
 interface SortState {
@@ -24,6 +24,7 @@ interface SessionsFilters {
 
 const SESSIONS_FILTERS_KEY = 'stackflow.sessions.filters.v1';
 const MANUAL_ADD_DEFAULTS_KEY = 'stackflow.sessions.manualAdd.v1';
+const SESSIONS_TABLE_COLLAPSED_KEY = 'stackflow.sessions.tableCollapsed.v1';
 const MAX_LOCATION_LENGTH = 30;
 const MAX_STAKES_LENGTH = 25;
 const MAX_BUY_IN_DOLLARS = 10000000;
@@ -86,6 +87,13 @@ function saveFilters(filters: SessionsFilters): void {
   localStorage.setItem(SESSIONS_FILTERS_KEY, JSON.stringify(filters));
 }
 
+function loadTableCollapsed(): boolean {
+  return localStorage.getItem(SESSIONS_TABLE_COLLAPSED_KEY) === 'true';
+}
+
+function saveTableCollapsed(collapsed: boolean): void {
+  localStorage.setItem(SESSIONS_TABLE_COLLAPSED_KEY, collapsed ? 'true' : 'false');
+}
 
 function mergeUnique(values: string[]): string[] {
   const seen = new Set<string>();
@@ -232,7 +240,7 @@ function sessionHours(session: Session): number {
     return 0;
   }
 
-  return (session.endedAt - session.startedAt) / (1000 * 60 * 60);
+  return getSessionDurationMs(session, session.endedAt) / (1000 * 60 * 60);
 }
 
 function formatHours(hours: number): string {
@@ -440,6 +448,7 @@ function sanitizeSessionRecord(value: unknown): Session | null {
   const startedAt = value.startedAt;
   const endedAt = value.endedAt;
   const updatedAt = value.updatedAt;
+  const breaksRaw = value.breaks;
 
   if (typeof id !== 'string' || id.trim().length === 0) {
     return null;
@@ -450,6 +459,10 @@ function sanitizeSessionRecord(value: unknown): Session | null {
   }
 
   if (!Array.isArray(events)) {
+    return null;
+  }
+
+  if (breaksRaw !== undefined && !Array.isArray(breaksRaw)) {
     return null;
   }
 
@@ -477,6 +490,7 @@ function sanitizeSessionRecord(value: unknown): Session | null {
   }
 
   const sanitizedEvents: Session['events'] = [];
+  const sanitizedBreaks: NonNullable<Session['breaks']> = [];
 
   for (const event of events) {
     if (!isPlainObject(event)) {
@@ -526,6 +540,36 @@ function sanitizeSessionRecord(value: unknown): Session | null {
     });
   }
 
+  if (Array.isArray(breaksRaw)) {
+    for (const item of breaksRaw) {
+      if (!isPlainObject(item)) {
+        return null;
+      }
+
+      const breakId = item.id;
+      const breakStartedAt = item.startedAt;
+      const durationMinutes = item.durationMinutes;
+
+      if (typeof breakId !== 'string' || breakId.trim().length === 0) {
+        return null;
+      }
+
+      if (!isFiniteNumber(breakStartedAt) || breakStartedAt <= 0) {
+        return null;
+      }
+
+      if (!isFiniteNumber(durationMinutes) || !Number.isInteger(durationMinutes) || durationMinutes < 1) {
+        return null;
+      }
+
+      sanitizedBreaks.push({
+        id: breakId,
+        startedAt: breakStartedAt,
+        durationMinutes
+      });
+    }
+  }
+
   const stakes = typeof stakesRaw === 'string' ? stakesRaw.trim() : '';
   const location = typeof locationRaw === 'string' ? locationRaw.trim() : '';
 
@@ -535,6 +579,7 @@ function sanitizeSessionRecord(value: unknown): Session | null {
     stakes: stakes ? stakes : undefined,
     location: location ? location : undefined,
     events: sanitizedEvents,
+    breaks: sanitizedBreaks,
     startedAt,
     endedAt,
     updatedAt
@@ -560,8 +605,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       <div class="sessions-titlebar">
         <button id="sessionsBack" class="sessions-back-btn" type="button" aria-label="Back to start">&larr;</button>
         <h2>Past Sessions</h2>
-      </div>
 
+      </div>
       <p id="sessionsNoRecords" class="sessions-empty sessions-empty-banner" hidden>No sessions have been created yet.</p>
 
       <div class="sessions-filters">
@@ -608,14 +653,15 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         </div>
       </div>
 
-
-      <div class="sessions-grid-wrap">
+      <div id="sessionsGridWrap" class="sessions-grid-wrap">
         <div class="sessions-grid sessions-grid-header">
-          <div class="sessions-mode-col" aria-label="Mode"></div>
+
+          <div class="sessions-mode-col"><button id="sessionsTableToggle" class="sessions-table-toggle" type="button" aria-label="Hide session rows" aria-expanded="true" title="Hide session rows">&#128065;</button></div>
           <div><button type="button" class="sessions-sort-btn" data-sort-key="profit">Profit</button></div>
           <div><button type="button" class="sessions-sort-btn" data-sort-key="date">Date</button></div>
-          <div><button type="button" class="sessions-sort-btn" data-sort-key="hours">Hrs</button></div>
-          <div><button type="button" class="sessions-sort-btn" data-sort-key="location">Loc</button></div>
+          <div class="sessions-stakes-col"><button type="button" class="sessions-sort-btn" data-sort-key="stakes">Stakes</button></div>
+          <div class="sessions-location-col"><button type="button" class="sessions-sort-btn" data-sort-key="location">Loc</button></div>
+          <div class="sessions-hours-col"><button type="button" class="sessions-sort-btn" data-sort-key="hours">Hrs</button></div>
         </div>
 
         <div id="sessionsGridBody" class="sessions-grid-body"></div>
@@ -712,6 +758,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const exportMenu = container.querySelector('#sessionsExportMenu') as HTMLDivElement;
   const exportMenuItems = Array.from(container.querySelectorAll('#sessionsExportMenu button')) as HTMLButtonElement[];
   const sortButtons = Array.from(container.querySelectorAll('.sessions-sort-btn')) as HTMLButtonElement[];
+  const tableToggleButton = container.querySelector('#sessionsTableToggle') as HTMLButtonElement;
   const body = container.querySelector('#sessionsGridBody') as HTMLDivElement;
   const noRecords = container.querySelector('#sessionsNoRecords') as HTMLParagraphElement;
   const empty = container.querySelector('#sessionsEmpty') as HTMLParagraphElement;
@@ -745,6 +792,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   let roiByBuyinChart: Chart | null = null;
 
   let sortState: SortState = { key: 'date', direction: 'desc' };
+  let tableCollapsed = loadTableCollapsed();
 
 
   const compareSessions = (a: Session, b: Session): number => {
@@ -772,6 +820,11 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         right = (b.location ?? '').toLowerCase();
         break;
       }
+      case 'stakes': {
+        left = (a.stakes ?? '').toLowerCase();
+        right = (b.stakes ?? '').toLowerCase();
+        break;
+      }
       case 'type': {
         left = a.mode;
         right = b.mode;
@@ -786,6 +839,13 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     return sortState.direction === 'asc' ? base : -base;
   };
 
+  const updateTableVisibility = () => {
+    body.hidden = tableCollapsed;
+    tableToggleButton.innerHTML = tableCollapsed ? '&#128584;' : '&#128065;';
+    tableToggleButton.setAttribute('aria-label', tableCollapsed ? 'Show session rows' : 'Hide session rows');
+    tableToggleButton.setAttribute('title', tableCollapsed ? 'Show session rows' : 'Hide session rows');
+    tableToggleButton.setAttribute('aria-expanded', tableCollapsed ? 'false' : 'true');
+  };
   const updateSortButtons = () => {
     for (const button of sortButtons) {
       const key = (button.dataset.sortKey as SortKey | undefined) ?? 'date';
@@ -1941,6 +2001,12 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   container.addEventListener('click', hideExportMenu);
 
+  tableToggleButton.addEventListener('click', () => {
+    tableCollapsed = !tableCollapsed;
+    saveTableCollapsed(tableCollapsed);
+    updateTableVisibility();
+  });
+
   const renderRows = () => {
     const activeFilters = getActiveFilters();
     saveFilters(activeFilters);
@@ -1982,8 +2048,9 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
             <div class="sessions-mode-icon" aria-label="${session.mode === 'cash' ? 'Cash game' : 'Tournament'}" title="${session.mode === 'cash' ? 'Cash game' : 'Tournament'}">${session.mode === 'cash' ? '&#128181;' : '&#127942;'}</div>
             <div class="sessions-profit ${profitClass(totals.grossProfit)}">${session.mode === 'cash' ? `${formatProfitMoney(totals.grossProfit)} <span class='sessions-profit-hourly'>${(hourlyRate / 100).toFixed(2)} / hr</span>` : formatProfitMoney(totals.grossProfit)}</div>
             <div>${formatDate(session.startedAt)}</div>
-            <div>${formatHoursClock(hours)}</div>
-            <div class="sessions-location-cell" title="${escapeHtml(location || '-')}">${escapeHtml(locationDisplay)}</div>
+            <div class="sessions-stakes-cell sessions-stakes-col" title="${escapeHtml((session.stakes ?? "").trim() || "-")}">${escapeHtml((session.stakes ?? "").trim() || "-")}</div>
+            <div class="sessions-location-cell sessions-location-col" title="${escapeHtml(location || '-')}">${escapeHtml(locationDisplay)}</div>
+            <div class="sessions-hours-col">${formatHoursClock(hours)}</div>
           </div>
         `;
       }).join('');
@@ -2087,7 +2154,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           direction: sortState.direction === 'asc' ? 'desc' : 'asc'
         };
       } else {
-        const defaultDirection: SortDirection = key === 'location' || key === 'type' ? 'asc' : 'desc';
+        const defaultDirection: SortDirection = key === 'location' || key === 'stakes' || key === 'type' ? 'asc' : 'desc';
         sortState = {
           key,
           direction: defaultDirection
@@ -2101,75 +2168,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   locationSelect.addEventListener('change', renderRows);
   dateRangeSelect.addEventListener('change', renderRows);
 
+  updateTableVisibility();
   renderRows();
 
   return container;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

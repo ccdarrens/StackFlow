@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DefaultSessionService } from '../../src/services/sessionService';
 import type { SessionRepository } from '../../src/storage/repository';
 import type { Session } from '../../src/models/session';
-import { createSession } from '../helpers/fixtures';
+import { createBreak, createSession } from '../helpers/fixtures';
 
 class InMemoryRepository implements SessionRepository {
   public sessions: Session[] = [];
@@ -65,6 +65,7 @@ describe('DefaultSessionService', () => {
 
     expect(session.mode).toBe('cash');
     expect(session.events).toHaveLength(1);
+    expect(session.breaks).toEqual([]);
     expect(session.events[0]?.type).toBe('investment');
     expect(await service.getActiveSession()).toMatchObject({ id: session.id });
   });
@@ -84,6 +85,27 @@ describe('DefaultSessionService', () => {
 
     const updated = await repository.getSessionById(session.id);
     expect(updated?.events.map(event => event.type)).toEqual(['investment', 'return', 'expense']);
+  });
+
+  it('adds a dedicated break to the active session', async () => {
+    const session = await service.createTournamentSession(undefined, undefined, 0, 1_700_000_000_000);
+
+    const updated = await service.addBreak(15, 1_700_000_060_000);
+
+    expect(updated.breaks).toHaveLength(1);
+    expect(updated.breaks?.[0]).toMatchObject({ durationMinutes: 15, startedAt: 1_700_000_060_000 });
+    expect((await repository.getSessionById(session.id))?.breaks).toHaveLength(1);
+  });
+
+  it('rejects overlapping breaks', async () => {
+    await repository.saveSession(createSession({
+      id: 'active-1',
+      startedAt: 1_000,
+      breaks: [createBreak({ id: 'break-1', startedAt: 5 * 60 * 1000, durationMinutes: 15 })]
+    }));
+    await repository.setActiveSession('active-1');
+
+    await expect(service.addBreak(10, 10 * 60 * 1000)).rejects.toThrow('Breaks cannot overlap');
   });
 
   it('ends the active session and clears the active id', async () => {
@@ -109,6 +131,7 @@ describe('DefaultSessionService', () => {
     });
 
     expect(created.events).toHaveLength(2);
+    expect(created.breaks).toEqual([]);
     expect(created.events[0]?.note).toBe('buyin');
     expect(created.events[1]?.note).toBe('payout');
   });
@@ -147,12 +170,13 @@ describe('DefaultSessionService', () => {
     await repository.saveSession(createSession({ id: 'existing', stakes: '1/2', updatedAt: 100 }));
 
     const result = await service.mergeSessionRecords([
-      createSession({ id: 'existing', stakes: '5/10', updatedAt: 50 }),
+      createSession({ id: 'existing', stakes: '5/10', updatedAt: 50, breaks: [createBreak({ id: 'break-imported' })] }),
       createSession({ id: 'new-session', updatedAt: 200 })
     ]);
 
     expect(result).toEqual({ added: 1, overwritten: 1 });
     expect((await repository.getSessionById('existing'))?.stakes).toBe('5/10');
+    expect((await repository.getSessionById('existing'))?.breaks?.[0]?.id).toBe('break-imported');
     expect((await repository.getSessionById('new-session'))?.id).toBe('new-session');
   });
 

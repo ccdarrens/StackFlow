@@ -1,5 +1,5 @@
 import type { SessionEvent } from '../../src/models/event';
-import type { Session, SessionMode } from '../../src/models/session';
+import type { Session, SessionBreak, SessionMode } from '../../src/models/session';
 
 export function createEvent(overrides: Partial<SessionEvent> = {}): SessionEvent {
   return {
@@ -12,6 +12,14 @@ export function createEvent(overrides: Partial<SessionEvent> = {}): SessionEvent
   };
 }
 
+export function createBreak(overrides: Partial<SessionBreak> = {}): SessionBreak {
+  return {
+    id: overrides.id ?? 'break-1',
+    startedAt: overrides.startedAt ?? 1_700_000_010_000,
+    durationMinutes: overrides.durationMinutes ?? 15
+  };
+}
+
 export function createSession(overrides: Partial<Session> = {}): Session {
   const mode: SessionMode = overrides.mode ?? 'cash';
 
@@ -21,6 +29,7 @@ export function createSession(overrides: Partial<Session> = {}): Session {
     stakes: overrides.stakes,
     location: overrides.location,
     events: overrides.events ?? [],
+    breaks: overrides.breaks ?? [],
     startedAt: overrides.startedAt ?? 1_700_000_000_000,
     updatedAt: overrides.updatedAt ?? 1_700_000_100_000,
     endedAt: overrides.endedAt

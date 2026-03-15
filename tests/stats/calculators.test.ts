@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { calculateLifetimeStats, calculateSessionTotals } from '../../src/stats/calculators';
-import { createEvent, createSession } from '../helpers/fixtures';
+import { createBreak, createEvent, createSession } from '../helpers/fixtures';
 
 describe('calculateSessionTotals', () => {
   it('aggregates cash-session totals', () => {
@@ -53,6 +53,7 @@ describe('calculateLifetimeStats', () => {
       createSession({
         startedAt: 1_000,
         endedAt: 60 * 60 * 1000 + 1_000,
+        breaks: [createBreak({ id: 'break-1', startedAt: 15 * 60 * 1000, durationMinutes: 10 })],
         events: [
           createEvent({ type: 'investment', amount: 10_000 }),
           createEvent({ id: 'e2', type: 'return', amount: 14_000 }),
@@ -63,6 +64,7 @@ describe('calculateLifetimeStats', () => {
         id: 'session-2',
         startedAt: 60 * 60 * 1000 + 1_000,
         endedAt: 3 * 60 * 60 * 1000 + 1_000,
+        breaks: [createBreak({ id: 'break-2', startedAt: 90 * 60 * 1000, durationMinutes: 15 })],
         events: [
           createEvent({ id: 'e4', type: 'investment', amount: 5_000 }),
           createEvent({ id: 'e5', type: 'return', amount: 2_000 })
@@ -80,9 +82,9 @@ describe('calculateLifetimeStats', () => {
       totalGrossProfit: 1_000,
       totalNetProfit: 500,
       totalExpenses: 500,
-      totalDurationMs: 3 * 60 * 60 * 1000,
-      hourlyGross: 1000 / 3,
-      hourlyNet: 500 / 3
+      totalDurationMs: 155 * 60 * 1000,
+      hourlyGross: 1000 / (155 / 60),
+      hourlyNet: 500 / (155 / 60)
     });
   });
 

@@ -1,5 +1,5 @@
 import type { SessionService } from '../../services/sessionService';
-import type { Session } from '../../models/session';
+import { getSessionDurationMs, type Session } from '../../models/session';
 import type { ExpenseCategory } from '../../models/event';
 import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
@@ -308,7 +308,6 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
 export async function renderCashGameView(session: Session, service: SessionService): Promise<HTMLElement> {
   const container = document.createElement('div');
   container.className = 'app-container';
-  const start = session.startedAt;
   const totals = calculateSessionTotals(session);
 
   container.innerHTML = `
@@ -316,7 +315,7 @@ export async function renderCashGameView(session: Session, service: SessionServi
         <h1>Cash Session</h1>
         <div class="cash-meta">
           <p>${session.stakes ?? '-'} @ ${session.location ?? '-'}</p>
-          <p><strong>Duration:</strong> <span id="activeDuration">${formatDuration(Date.now() - start)}</span></p>
+          <p><strong>Duration:</strong> <span id="activeDuration">${formatDuration(getSessionDurationMs(session, Date.now()))}</span></p>
         </div>
 
         <div class="cash-stats">
@@ -333,8 +332,12 @@ export async function renderCashGameView(session: Session, service: SessionServi
   `;
 
   const durationEl = container.querySelector('#activeDuration')!;
-  setInterval(() => {
-    durationEl.textContent = formatDuration(Date.now() - start);
+  const durationIntervalId = setInterval(() => {
+    if (!container.isConnected) {
+      clearInterval(durationIntervalId);
+      return;
+    }
+    durationEl.textContent = formatDuration(getSessionDurationMs(session, Date.now()));
   }, 1000);
 
   container.querySelector('#addon')!
@@ -354,6 +357,9 @@ export async function renderCashGameView(session: Session, service: SessionServi
 
   return container;
 }
+
+
+
 
 
 

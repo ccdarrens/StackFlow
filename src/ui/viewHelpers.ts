@@ -26,6 +26,17 @@ export function formatDateTimeLocal(now: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+export function formatDateTimeLocalSeconds(now: Date): string {
+  const year = now.getFullYear();
+  const month = pad2(now.getMonth() + 1);
+  const day = pad2(now.getDate());
+  const hours = pad2(now.getHours());
+  const minutes = pad2(now.getMinutes());
+  const seconds = pad2(now.getSeconds());
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+}
+
 export function parseDollarsToCents(rawValue: string, allowZero = false, maxDollars?: number): number | null {
   const normalized = rawValue.replace(/[$,\s]/g, '');
   if (!normalized) {
@@ -55,6 +66,99 @@ export function formatMoney(cents: number, withPlus = false): string {
   return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
 }
 
+let breakWarningAudio: HTMLAudioElement | null = null;
+
+function getBreakWarningAudio(): HTMLAudioElement | null {
+  if (typeof Audio === 'undefined') {
+    return null;
+  }
+
+  if (!breakWarningAudio) {
+    breakWarningAudio = new Audio(`${import.meta.env.BASE_URL}audio/timer-alert.mp3`);
+    breakWarningAudio.preload = 'auto';
+    breakWarningAudio.volume = 0.8;
+  }
+
+  return breakWarningAudio;
+}
+
+function playBreakWarningFallback(): void {
+  try {
+    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) {
+      return;
+    }
+
+    const context = new AudioContextCtor();
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(880, now);
+    gainNode.gain.setValueAtTime(0.0001, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.2);
+
+    window.setTimeout(() => {
+      void context.close().catch(() => undefined);
+    }, 300);
+  } catch {
+    // Best-effort effect only.
+  }
+}
+
+export function primeBreakWarningSignal(): void {
+  try {
+    const audio = getBreakWarningAudio();
+    if (!audio) {
+      return;
+    }
+
+    audio.muted = true;
+    audio.currentTime = 0;
+    void audio.play()
+      .then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.muted = false;
+      })
+      .catch(() => {
+        audio.muted = false;
+      });
+  } catch {
+    // Best-effort effect only.
+  }
+}
+
+export function playBreakWarningSignal(): void {
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    navigator.vibrate([120, 80, 120]);
+  }
+
+  try {
+    const audio = getBreakWarningAudio();
+    if (!audio) {
+      playBreakWarningFallback();
+      return;
+    }
+
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = false;
+    void audio.play().catch(() => {
+      playBreakWarningFallback();
+    });
+  } catch {
+    playBreakWarningFallback();
+  }
+}
+
 export function celebratePositiveResult(profitCents: number): void {
   if (profitCents <= 0) {
     return;
@@ -65,7 +169,7 @@ export function celebratePositiveResult(profitCents: number): void {
   }
 
   try {
-    const audio = new Audio('/audio/cha-ching.mp3');
+    const audio = new Audio(`${import.meta.env.BASE_URL}audio/cha-ching.mp3`);
     audio.preload = 'auto';
     audio.volume = 0.8;
     void audio.play().catch(() => undefined);
@@ -108,3 +212,4 @@ export function attachSheetCloseHandlers(backdrop: HTMLDivElement, closeButton: 
 
   return close;
 }
+
