@@ -1,107 +1,80 @@
 # StackFlow
 
-StackFlow is an offline-first poker session tracker built with TypeScript and Vite.
+StackFlow is an offline-first poker session tracker for cash games and tournaments. It runs in a normal browser and can also be installed as a Progressive Web App on supported phones, tablets, and desktops.
 
-It tracks cash and tournament sessions using an event-based financial model (investments, returns, expenses), then derives all stats from those events.
+## What It Does
 
-## Features
+- Track live cash and tournament sessions
+- Record buy-ins, rebuys, add-ons, cashouts, payouts, and expenses
+- Review session history with filters, sorting, and charts
+- Export sessions to JSON or CSV
+- Import JSON backups back into the app
+- Keep your data locally in your browser for offline use
 
-- Start and track active cash or tournament sessions
-- Bottom-sheet data entry for session actions (buy-in, add-on/rebuy, expenses, end session)
-- Session history grid with filters, sorting, and aggregate footer metrics
-- Charts for trends and performance using Chart.js
-- Export filtered sessions to JSON or CSV
-- Manual session entry from the Sessions view
-- Local preference/history capture for fast entry (location, stakes, buy-in, categories)
-- Offline persistence in browser localStorage
+## Access and Install
 
-## Tech Stack
+You can use StackFlow in two ways:
 
-- TypeScript
-- Vite
-- Vanilla DOM rendering (no frontend framework)
-- Chart.js
+1. Open it in your browser from the deployed GitHub Pages site for this repository
+2. Install it as an app from a supported browser
 
-## Getting Started
+### Install on iPhone or iPad
 
-### Prerequisites
+1. Open StackFlow in Safari
+2. Tap the Share button
+3. Tap `Add to Home Screen`
+4. Launch it from your home screen like a normal app
 
-- Node.js 18+
-- npm 9+
+### Install on Android
 
-### Install
+1. Open StackFlow in Chrome or another supported browser
+2. Tap the browser menu
+3. Tap `Install app` or `Add to Home screen`
+4. Launch it from your app list or home screen
 
-```bash
-npm install
-```
+### Install on Desktop
 
-### Run Development Server
+1. Open StackFlow in Chrome or Edge
+2. Use the install button in the address bar or browser menu
+3. Install it
+4. Launch it as a standalone app window if you want
 
-```bash
-npm run dev
-```
+### Open on Phone from Your Desktop
 
-### Build for Production
+If you have StackFlow open on your desktop and want to jump to it on your phone, scan this QR code:
 
-```bash
-npm run build
-```
+![StackFlow QR code](public/images/stackflow-qr.png)
 
-### Preview Production Build
+Direct link: `https://ccdarrens.github.io/StackFlow`
 
-```bash
-npm run preview
-```
+## Basic Use
 
-## NPM Scripts
+1. Start a cash or tournament session
+2. Record investments, returns, and expenses as you play
+3. End the session when you are done
+4. Review results in `Sessions`
+5. Export JSON periodically as a backup
 
-- `npm run dev`: Start local Vite dev server
-- `npm run build`: Type-check and build production assets
-- `npm run preview`: Serve the built app locally
+## Backups and Data Storage
 
-## Project Structure
+StackFlow stores your session data in your browser on the current device. That means:
 
-```text
-src/
-  models/       Domain types (Session, SessionEvent)
-  services/     Business rules and session orchestration
-  stats/        Derived metrics calculators
-  storage/      Repository abstractions and localStorage adapters
-  ui/           Views, rendering, routing, and user interaction
-  styles/       App styling
-  utils/        Shared utilities
-```
+- your data stays local unless you export it
+- clearing browser storage can remove your saved sessions
+- using a different device or browser will not automatically show the same data
 
-## Domain Model Summary
+For safety, use JSON export as a backup and import it when needed.
 
-- Session mode: `cash` or `tournament`
-- Event types: `investment`, `return`, `expense`
-- Amounts are stored in cents to avoid floating-point errors
-- Profit is derived, not persisted:
-  - `gross = returns - investments`
-  - `net = gross - expenses`
+## Browser and PWA Notes
 
-See architecture details in [src/ARCHITECTURE.md](src/ARCHITECTURE.md).
+- StackFlow still works as a regular website in a desktop browser
+- Installing it as a PWA is optional
+- Some device features, such as vibration, depend on browser support
+- Offline support is best for previously loaded app assets on the same device
 
-## Data and Exports
+## Developer Docs
 
-- Primary storage: browser `localStorage`
-- Export formats:
-  - JSON (full session details suitable for re-import workflows)
-  - CSV (session-level tabular data)
-
-## Development Notes
-
-- This project is intentionally framework-light to keep domain logic explicit.
-- Business rules should stay in services/calculators, not in UI rendering code.
-- Keep all money math in cents.
-
-## Roadmap Ideas
-
-- Import flow for exported JSON
-- Cloud sync / multi-device support
-- Expanded analytics and charting
-- Optional undo/event edit workflows
+Developer setup, test commands, architecture notes, and release workflow are in [DEVELOPER.md](DEVELOPER.md).
 
 ## License
 
