@@ -5,8 +5,8 @@ StackFlow is an offline-first poker session tracker for cash games and tournamen
 ## What It Does
 
 - Track live cash and tournament sessions
-- Record buy-ins, rebuys, add-ons, cashouts, payouts, and expenses
-- Review session history with filters, sorting, and charts
+- Record buy-ins, rebuys, add-ons, cashouts, payouts, expenses, and tournament breaks
+- Review session history with filters, sorting, charts, and break-adjusted hours
 - Export sessions to JSON or CSV
 - Import JSON backups back into the app
 - Keep your data locally in your browser for offline use
@@ -50,10 +50,11 @@ Direct link: `https://ccdarrens.github.io/StackFlow`
 ## Basic Use
 
 1. Start a cash or tournament session
-2. Record investments, returns, and expenses as you play
+2. Record investments, returns, expenses, and tournament breaks as you play
 3. End the session when you are done
 4. Review results in `Sessions`
-5. Export JSON periodically as a backup
+5. For tournaments, use `Start Break` to track scheduled breaks and get a 1-minute alert before play resumes
+6. Export JSON periodically as a backup
 
 ## Backups and Data Storage
 
@@ -79,5 +80,7 @@ Developer setup, test commands, architecture notes, and release workflow are in 
 ## License
 
 MIT - see [LICENSE](LICENSE).
+
+
 
 

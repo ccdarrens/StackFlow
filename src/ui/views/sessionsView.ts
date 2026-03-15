@@ -1,6 +1,6 @@
 import Chart from 'chart.js/auto';
 import type { SessionService } from '../../services/sessionService';
-import type { Session } from '../../models/session';
+import { getSessionDurationMs, type Session } from '../../models/session';
 import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
 
@@ -240,7 +240,7 @@ function sessionHours(session: Session): number {
     return 0;
   }
 
-  return (session.endedAt - session.startedAt) / (1000 * 60 * 60);
+  return getSessionDurationMs(session, session.endedAt) / (1000 * 60 * 60);
 }
 
 function formatHours(hours: number): string {
@@ -448,6 +448,7 @@ function sanitizeSessionRecord(value: unknown): Session | null {
   const startedAt = value.startedAt;
   const endedAt = value.endedAt;
   const updatedAt = value.updatedAt;
+  const breaksRaw = value.breaks;
 
   if (typeof id !== 'string' || id.trim().length === 0) {
     return null;
@@ -458,6 +459,10 @@ function sanitizeSessionRecord(value: unknown): Session | null {
   }
 
   if (!Array.isArray(events)) {
+    return null;
+  }
+
+  if (breaksRaw !== undefined && !Array.isArray(breaksRaw)) {
     return null;
   }
 
@@ -485,6 +490,7 @@ function sanitizeSessionRecord(value: unknown): Session | null {
   }
 
   const sanitizedEvents: Session['events'] = [];
+  const sanitizedBreaks: NonNullable<Session['breaks']> = [];
 
   for (const event of events) {
     if (!isPlainObject(event)) {
@@ -534,6 +540,36 @@ function sanitizeSessionRecord(value: unknown): Session | null {
     });
   }
 
+  if (Array.isArray(breaksRaw)) {
+    for (const item of breaksRaw) {
+      if (!isPlainObject(item)) {
+        return null;
+      }
+
+      const breakId = item.id;
+      const breakStartedAt = item.startedAt;
+      const durationMinutes = item.durationMinutes;
+
+      if (typeof breakId !== 'string' || breakId.trim().length === 0) {
+        return null;
+      }
+
+      if (!isFiniteNumber(breakStartedAt) || breakStartedAt <= 0) {
+        return null;
+      }
+
+      if (!isFiniteNumber(durationMinutes) || !Number.isInteger(durationMinutes) || durationMinutes < 1) {
+        return null;
+      }
+
+      sanitizedBreaks.push({
+        id: breakId,
+        startedAt: breakStartedAt,
+        durationMinutes
+      });
+    }
+  }
+
   const stakes = typeof stakesRaw === 'string' ? stakesRaw.trim() : '';
   const location = typeof locationRaw === 'string' ? locationRaw.trim() : '';
 
@@ -543,6 +579,7 @@ function sanitizeSessionRecord(value: unknown): Session | null {
     stakes: stakes ? stakes : undefined,
     location: location ? location : undefined,
     events: sanitizedEvents,
+    breaks: sanitizedBreaks,
     startedAt,
     endedAt,
     updatedAt
@@ -2136,3 +2173,5 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
   return container;
 }
+
+
