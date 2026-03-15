@@ -1,16 +1,16 @@
-const BASE_PATH = '/StackFlow';
-const INDEX_URL = `${BASE_PATH}/index.html`;
-const CACHE_NAME = 'stackflow-shell-v2';
+const SCOPE_URL = new URL(self.registration.scope);
+const INDEX_URL = new URL('index.html', SCOPE_URL).toString();
+const CACHE_NAME = 'stackflow-shell-v3';
 const APP_SHELL = [
-  `${BASE_PATH}/`,
+  new URL('./', SCOPE_URL).toString(),
   INDEX_URL,
-  `${BASE_PATH}/manifest.webmanifest`,
-  `${BASE_PATH}/favicon.ico`,
-  `${BASE_PATH}/icons/icon-192.png`,
-  `${BASE_PATH}/icons/icon-512.png`,
-  `${BASE_PATH}/icons/icon-maskable-512.png`,
-  `${BASE_PATH}/icons/apple-touch-icon.png`,
-  `${BASE_PATH}/audio/cha-ching.mp3`
+  new URL('manifest.webmanifest', SCOPE_URL).toString(),
+  new URL('favicon.ico', SCOPE_URL).toString(),
+  new URL('icons/icon-192.png', SCOPE_URL).toString(),
+  new URL('icons/icon-512.png', SCOPE_URL).toString(),
+  new URL('icons/icon-maskable-512.png', SCOPE_URL).toString(),
+  new URL('icons/apple-touch-icon.png', SCOPE_URL).toString(),
+  new URL('audio/cha-ching.mp3', SCOPE_URL).toString()
 ];
 
 self.addEventListener('install', event => {
@@ -39,11 +39,11 @@ self.addEventListener('fetch', event => {
   }
 
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) {
+  if (url.origin !== SCOPE_URL.origin) {
     return;
   }
 
-  if (!url.pathname.startsWith(BASE_PATH)) {
+  if (!url.pathname.startsWith(SCOPE_URL.pathname)) {
     return;
   }
 
@@ -51,8 +51,12 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(request)
         .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(INDEX_URL, copy));
+          if (response.ok) {
+            const copy = response.clone();
+            event.waitUntil(
+              caches.open(CACHE_NAME).then(cache => cache.put(INDEX_URL, copy))
+            );
+          }
           return response;
         })
         .catch(() => caches.match(INDEX_URL))
@@ -66,7 +70,9 @@ self.addEventListener('fetch', event => {
         .then(response => {
           if (response.ok) {
             const copy = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+            event.waitUntil(
+              caches.open(CACHE_NAME).then(cache => cache.put(request, copy))
+            );
           }
           return response;
         })
