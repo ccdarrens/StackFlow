@@ -1,7 +1,7 @@
 const CACHE_PREFIX = 'stackflow-';
 const SCOPE_URL = new URL(self.registration.scope);
 const INDEX_URL = new URL('index.html', SCOPE_URL).toString();
-const CACHE_NAME = `${CACHE_PREFIX}shell-v4`;
+const CACHE_NAME = `${CACHE_PREFIX}shell-v5`;
 const OFFLINE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Offline</title><style>body{font-family:system-ui,sans-serif;background:#0f2b20;color:#f3efe3;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;text-align:center}main{max-width:28rem}h1{margin:0 0 12px;font-size:1.8rem}p{margin:0;line-height:1.5;opacity:.9}</style></head><body><main><h1>Stack Flow is offline</h1><p>The app shell is unavailable right now. Reconnect and reload once the site has been visited successfully online.</p></main></body></html>`;
 const OFFLINE_RESPONSE = new Response(OFFLINE_HTML, {
   status: 503,
@@ -58,40 +58,46 @@ self.addEventListener('fetch', event => {
   }
 
   if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
+    const networkPromise = fetch(request);
+    event.waitUntil(
+      networkPromise
         .then(response => {
-          if (response.ok) {
-            const copy = response.clone();
-            event.waitUntil(
-              caches.open(CACHE_NAME).then(cache => cache.put(INDEX_URL, copy))
-            );
+          if (!response.ok) {
+            return undefined;
           }
-          return response;
+
+          return caches.open(CACHE_NAME).then(cache => cache.put(INDEX_URL, response.clone()));
         })
-        .catch(async () => {
-          const cached = await caches.match(INDEX_URL);
-          return cached || OFFLINE_RESPONSE.clone();
-        })
+        .catch(() => undefined)
+    );
+
+    event.respondWith(
+      networkPromise.catch(async () => {
+        const cached = await caches.match(INDEX_URL);
+        return cached || OFFLINE_RESPONSE.clone();
+      })
     );
     return;
   }
 
   event.respondWith(
     caches.match(request).then(cached => {
-      const fetchPromise = fetch(request)
-        .then(response => {
-          if (response.ok) {
-            const copy = response.clone();
-            event.waitUntil(
-              caches.open(CACHE_NAME).then(cache => cache.put(request, copy))
-            );
-          }
-          return response;
-        })
-        .catch(() => cached || Response.error());
+      const networkPromise = fetch(request);
 
-      return cached || fetchPromise;
+      event.waitUntil(
+        networkPromise
+          .then(response => {
+            if (!response.ok) {
+              return undefined;
+            }
+
+            return caches.open(CACHE_NAME).then(cache => cache.put(request, response.clone()));
+          })
+          .catch(() => undefined)
+      );
+
+      const responsePromise = networkPromise.catch(() => cached || Response.error());
+      return cached || responsePromise;
     })
   );
 });
