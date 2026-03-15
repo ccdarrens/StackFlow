@@ -332,7 +332,11 @@ export async function renderCashGameView(session: Session, service: SessionServi
   `;
 
   const durationEl = container.querySelector('#activeDuration')!;
-  setInterval(() => {
+  const durationIntervalId = setInterval(() => {
+    if (!container.isConnected) {
+      clearInterval(durationIntervalId);
+      return;
+    }
     durationEl.textContent = formatDuration(getSessionDurationMs(session, Date.now()));
   }, 1000);
 
