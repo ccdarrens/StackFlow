@@ -1,14 +1,16 @@
-const CACHE_NAME = 'stackflow-shell-v1';
+const BASE_PATH = '/StackFlow';
+const INDEX_URL = `${BASE_PATH}/index.html`;
+const CACHE_NAME = 'stackflow-shell-v2';
 const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/manifest.webmanifest',
-  '/favicon.ico',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon-maskable-512.png',
-  '/icons/apple-touch-icon.png',
-  '/audio/cha-ching.mp3'
+  `${BASE_PATH}/`,
+  INDEX_URL,
+  `${BASE_PATH}/manifest.webmanifest`,
+  `${BASE_PATH}/favicon.ico`,
+  `${BASE_PATH}/icons/icon-192.png`,
+  `${BASE_PATH}/icons/icon-512.png`,
+  `${BASE_PATH}/icons/icon-maskable-512.png`,
+  `${BASE_PATH}/icons/apple-touch-icon.png`,
+  `${BASE_PATH}/audio/cha-ching.mp3`
 ];
 
 self.addEventListener('install', event => {
@@ -41,15 +43,19 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  if (!url.pathname.startsWith(BASE_PATH)) {
+    return;
+  }
+
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then(response => {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put('/index.html', copy));
+          caches.open(CACHE_NAME).then(cache => cache.put(INDEX_URL, copy));
           return response;
         })
-        .catch(() => caches.match('/index.html'))
+        .catch(() => caches.match(INDEX_URL))
     );
     return;
   }
