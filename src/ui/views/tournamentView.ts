@@ -9,7 +9,6 @@ import {
   celebratePositiveResult,
   formatDateTimeLocal,
   formatDuration,
-  formatDateTimeLocalSeconds,
   parseDollarsToCents,
   playBreakWarningSignal,
   primeBreakWarningSignal
@@ -59,7 +58,7 @@ function openRebuyAddonSheet(service: SessionService): void {
       <h2 id="rebuyAddonTitle">Rebuy / Addon</h2>
       <form id="rebuyAddonForm" class="sheet-form">
         <label for="rebuyAddonAmount">Amount ($)</label>
-        <input id="rebuyAddonAmount" type="text" inputmode="decimal" placeholder="e.g. 150" required autofocus />
+        <input id="rebuyAddonAmount" type="text" inputmode="decimal" placeholder="e.g. 150" required />
 
         <label for="rebuyAddonNote">Note (Optional)</label>
         <input id="rebuyAddonNote" type="text" value="rebuy" />
@@ -88,7 +87,6 @@ function openRebuyAddonSheet(service: SessionService): void {
   const saveButton = backdrop.querySelector('#saveRebuyAddon') as HTMLButtonElement;
 
   atInput.value = formatDateTimeLocal(new Date());
-  amountInput.focus();
   amountInput.select();
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
 
@@ -172,7 +170,6 @@ function openExpenseSheet(service: SessionService): void {
     : 'tip';
 
   expenseAtInput.value = formatDateTimeLocal(new Date());
-  expenseAmountInput.focus();
   expenseAmountInput.select();
 
   const renderCategoryPills = () => {
@@ -238,10 +235,15 @@ function openBreakSheet(session: Session, service: SessionService): void {
       <h2 id="breakTitle">Start Break</h2>
       <form id="breakForm" class="sheet-form">
         <label for="breakDuration">Break Length (Minutes)</label>
-        <input id="breakDuration" type="number" inputmode="numeric" min="1" step="1" value="${loadBreakDurationPreference(session)}" required autofocus />
+        <input id="breakDuration" type="number" inputmode="numeric" min="1" step="1" value="${loadBreakDurationPreference(session)}" required />
 
-        <label for="breakAt">Break Start Time</label>
-        <input id="breakAt" type="datetime-local" step="1" required />
+        <label for="breakRemainingMinutes">Time Remaining</label>
+        <div class="sheet-inline-fields">
+          <input id="breakRemainingMinutes" type="number" inputmode="numeric" min="0" step="1" required />
+          <span class="sheet-inline-separator">min</span>
+          <input id="breakRemainingSeconds" type="number" inputmode="numeric" min="0" max="59" step="1" value="0" required />
+          <span class="sheet-inline-separator">sec</span>
+        </div>
 
         <p id="breakError" class="sheet-error"></p>
 
@@ -257,14 +259,13 @@ function openBreakSheet(session: Session, service: SessionService): void {
 
   const form = backdrop.querySelector('#breakForm') as HTMLFormElement;
   const durationInput = backdrop.querySelector('#breakDuration') as HTMLInputElement;
-  const breakAtInput = backdrop.querySelector('#breakAt') as HTMLInputElement;
+  const remainingMinutesInput = backdrop.querySelector('#breakRemainingMinutes') as HTMLInputElement;
+  const remainingSecondsInput = backdrop.querySelector('#breakRemainingSeconds') as HTMLInputElement;
   const errorEl = backdrop.querySelector('#breakError') as HTMLParagraphElement;
   const cancelButton = backdrop.querySelector('#cancelBreak') as HTMLButtonElement;
   const saveButton = backdrop.querySelector('#saveBreak') as HTMLButtonElement;
 
-  const defaultBreakStartMs = Math.max(session.startedAt, Date.now() - 20_000);
-  breakAtInput.value = formatDateTimeLocalSeconds(new Date(defaultBreakStartMs));
-  durationInput.focus();
+  remainingMinutesInput.value = durationInput.value;
   durationInput.select();
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
 
@@ -278,14 +279,34 @@ function openBreakSheet(session: Session, service: SessionService): void {
       return;
     }
 
-    const timestamp = breakAtInput.value ? new Date(breakAtInput.value).getTime() : Number.NaN;
-    if (!Number.isFinite(timestamp)) {
-      errorEl.textContent = 'Please enter a valid break start time.';
+    const remainingMinutes = Number.parseInt(remainingMinutesInput.value.trim(), 10);
+    if (!Number.isInteger(remainingMinutes) || remainingMinutes < 0) {
+      errorEl.textContent = 'Minutes remaining must be 0 or greater.';
       return;
     }
 
+    const remainingSeconds = Number.parseInt(remainingSecondsInput.value.trim(), 10);
+    if (!Number.isInteger(remainingSeconds) || remainingSeconds < 0 || remainingSeconds > 59) {
+      errorEl.textContent = 'Seconds remaining must be between 0 and 59.';
+      return;
+    }
+
+    const totalBreakSeconds = durationMinutes * 60;
+    const remainingBreakSeconds = (remainingMinutes * 60) + remainingSeconds;
+    if (remainingBreakSeconds < 1) {
+      errorEl.textContent = 'Time remaining must be at least 1 second.';
+      return;
+    }
+
+    if (remainingBreakSeconds > totalBreakSeconds) {
+      errorEl.textContent = 'Time remaining cannot be longer than the full break.';
+      return;
+    }
+
+    const elapsedBreakMs = (totalBreakSeconds - remainingBreakSeconds) * 1000;
+    const timestamp = Date.now() - elapsedBreakMs;
     if (timestamp < session.startedAt) {
-      errorEl.textContent = 'Break start must be during the current session.';
+      errorEl.textContent = 'Calculated break start must be during the current session.';
       return;
     }
 
@@ -304,7 +325,6 @@ function openBreakSheet(session: Session, service: SessionService): void {
     }
   });
 }
-
 function openEndSessionSheet(session: Session, service: SessionService): void {
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
@@ -314,7 +334,7 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
       <h2 id="endSessionTitle">Exit Tournament</h2>
       <form id="endSessionForm" class="sheet-form">
         <label for="payoutAmount">Payout Amount ($)</label>
-        <input id="payoutAmount" type="text" inputmode="decimal" value="0" required autofocus />
+        <input id="payoutAmount" type="text" inputmode="decimal" value="0" required />
 
         <label for="payoutNote">Note (Optional)</label>
         <input id="payoutNote" type="text" placeholder="Optional note" />
@@ -343,7 +363,6 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
   const saveButton = backdrop.querySelector('#saveEndSession') as HTMLButtonElement;
 
   endAtInput.value = formatDateTimeLocal(new Date());
-  payoutAmountInput.focus();
   payoutAmountInput.select();
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
 
@@ -487,6 +506,9 @@ export async function renderTournamentView(session: Session, service: SessionSer
 
   return container;
 }
+
+
+
 
 
 

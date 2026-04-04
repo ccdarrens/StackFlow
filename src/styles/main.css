@@ -52,14 +52,39 @@ html, body {
   gap: 8px;
 }
 
-.sheet-form input {
+.sheet-form input,
+.sheet-form select,
+.sheet-form textarea,
+.sheet-form button {
   background: #0a1f17;
   border: 1px solid rgba(243, 239, 227, 0.22);
   color: var(--ivory);
   border-radius: 8px;
-  padding: 10px;
+  font-size: 16px;
 }
 
+.sheet-form input,
+.sheet-form select,
+.sheet-form textarea {
+  padding: 9px 10px;
+  min-height: 44px;
+}
+
+.sheet-form button {
+  min-height: 44px;
+}
+
+.sheet-inline-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.sheet-inline-separator {
+  color: rgba(243, 239, 227, 0.78);
+  font-size: 0.95rem;
+}
 .pill-row {
   display: flex;
   flex-wrap: wrap;
@@ -760,6 +785,9 @@ html, body {
     display: block;
   }
 }
+
+
+
 
 
 

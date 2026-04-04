@@ -24,7 +24,7 @@ function openAddonSheet(service: SessionService): void {
       <h2 id="addonTitle">Add Addon</h2>
       <form id="addonForm" class="sheet-form">
         <label for="addonAmount">Addon Amount ($)</label>
-        <input id="addonAmount" type="text" inputmode="decimal" placeholder="e.g. 50" required autofocus />
+        <input id="addonAmount" type="text" inputmode="decimal" placeholder="e.g. 50" required />
 
         <label for="addonNote">Note (Optional)</label>
         <input id="addonNote" type="text" placeholder="Optional note" />
@@ -53,7 +53,6 @@ function openAddonSheet(service: SessionService): void {
   const saveButton = backdrop.querySelector('#saveAddon') as HTMLButtonElement;
 
   addonAtInput.value = formatDateTimeLocal(new Date());
-  addonAmountInput.focus();
   addonAmountInput.select();
 
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
@@ -98,7 +97,7 @@ function openExpenseSheet(service: SessionService): void {
       <h2 id="expenseTitle">Add Expense</h2>
       <form id="expenseForm" class="sheet-form">
         <label for="expenseAmount">Amount ($)</label>
-        <input id="expenseAmount" type="text" inputmode="decimal" placeholder="e.g. 5" required autofocus />
+        <input id="expenseAmount" type="text" inputmode="decimal" placeholder="e.g. 5" required />
 
         <label>Category</label>
         <div id="expenseCategoryPills" class="pill-row"></div>
@@ -144,7 +143,6 @@ function openExpenseSheet(service: SessionService): void {
   let paidWithChips = localStorage.getItem(LAST_EXPENSE_CHIPS_KEY) === 'yes';
 
   expenseAtInput.value = formatDateTimeLocal(new Date());
-  expenseAmountInput.focus();
   expenseAmountInput.select();
 
   const renderCategoryPills = () => {
@@ -234,7 +232,7 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
       <h2 id="endSessionTitle">End Session</h2>
       <form id="endSessionForm" class="sheet-form">
         <label for="cashoutAmount">Cashout Amount ($)</label>
-        <input id="cashoutAmount" type="text" inputmode="decimal" placeholder="e.g. 200" required autofocus />
+        <input id="cashoutAmount" type="text" inputmode="decimal" placeholder="e.g. 200" required />
 
         <label for="cashoutNote">Note (Optional)</label>
         <input id="cashoutNote" type="text" placeholder="Optional note" />
@@ -263,7 +261,6 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
   const saveButton = backdrop.querySelector('#saveEndSession') as HTMLButtonElement;
 
   endAtInput.value = formatDateTimeLocal(new Date());
-  cashoutAmountInput.focus();
   cashoutAmountInput.select();
   const close = attachSheetCloseHandlers(backdrop, cancelButton);
 
@@ -357,6 +354,7 @@ export async function renderCashGameView(session: Session, service: SessionServi
 
   return container;
 }
+
 
 
 
