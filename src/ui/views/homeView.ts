@@ -10,11 +10,17 @@ import {
   saveTournamentStartPreferences
 } from '../../storage/tournamentStartPreferences';
 import logoTransparent from '../../logo-transparent-bg.png';
-import { attachSheetCloseHandlers, formatDateTimeLocal, parseDollarsToCents } from '../viewHelpers';
+import {
+  attachDataEntryPillHandler,
+  attachSheetCloseHandlers,
+  formatDateTimeLocal,
+  parseDollarsToCents
+} from '../viewHelpers';
 
 const MAX_LOCATION_LENGTH = 30;
 const MAX_STAKES_LENGTH = 25;
 const MAX_BUY_IN_DOLLARS = 10000000;
+const MAX_DATA_ENTRY_PILLS = 5;
 
 function formatDollarsFromCents(cents: number): string {
   return Number((cents / 100).toFixed(2)).toString();
@@ -28,18 +34,18 @@ function addPills(
 ): void {
   host.innerHTML = '';
 
-  for (const value of values) {
+  for (const value of values.slice(0, MAX_DATA_ENTRY_PILLS)) {
     const pill = document.createElement('button');
     pill.type = 'button';
     pill.className = 'pill-btn';
     pill.textContent = render ? render(value) : value;
-    pill.addEventListener('click', () => onPick(value));
+    attachDataEntryPillHandler(pill, () => onPick(value));
     host.appendChild(pill);
   }
 }
 
 
-function collectRecentLocations(sessions: Session[], maxValues = 8): string[] {
+function collectRecentLocations(sessions: Session[], maxValues = MAX_DATA_ENTRY_PILLS): string[] {
   const sorted = sessions.slice().sort((a, b) => b.startedAt - a.startedAt);
   const seen = new Set<string>();
   const values: string[] = [];
@@ -68,7 +74,7 @@ function collectRecentLocations(sessions: Session[], maxValues = 8): string[] {
 async function openCashStartSheet(service: SessionService): Promise<void> {
   const prefs = loadCashStartPreferences();
   const allSessions = await service.getAllSessions();
-  const recentLocationPills = collectRecentLocations(allSessions, 8);
+  const recentLocationPills = collectRecentLocations(allSessions);
 
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
@@ -123,12 +129,10 @@ async function openCashStartSheet(service: SessionService): Promise<void> {
 
   addPills(locationPills, recentLocationPills, value => {
     locationInput.value = value;
-    locationInput.focus();
   });
 
   addPills(stakesPills, prefs.stakes, value => {
     stakesInput.value = value;
-    stakesInput.focus();
   });
 
   addPills(
@@ -136,7 +140,6 @@ async function openCashStartSheet(service: SessionService): Promise<void> {
     prefs.buyIns,
     value => {
       buyInInput.value = value;
-      buyInInput.focus();
     },
     value => `$${value}`
   );
@@ -243,7 +246,7 @@ async function openTournamentStartSheet(service: SessionService): Promise<void> 
       result.push(value);
     }
 
-    return result;
+    return result.slice(0, MAX_DATA_ENTRY_PILLS);
   };
 
   const tournamentStakesFromHistory = tournamentSessions
@@ -266,7 +269,7 @@ async function openTournamentStartSheet(service: SessionService): Promise<void> 
   const defaultBuyInCents = getLastBuyInCents();
   const defaultBuyIn = defaultBuyInCents !== null ? formatDollarsFromCents(defaultBuyInCents) : '';
 
-  const locationPillValues = collectRecentLocations(allSessions, 8);
+  const locationPillValues = collectRecentLocations(allSessions);
   const stakesPillValues = uniqueValues([defaultStakes, ...tournamentPrefs.stakes, ...tournamentStakesFromHistory]);
   const buyInPillValues = uniqueValues([defaultBuyIn, ...tournamentPrefs.buyIns, ...tournamentBuyInsFromHistory]);
 
@@ -323,12 +326,10 @@ async function openTournamentStartSheet(service: SessionService): Promise<void> 
 
   addPills(locationPills, locationPillValues, value => {
     locationInput.value = value;
-    locationInput.focus();
   });
 
   addPills(stakesPills, stakesPillValues, value => {
     stakesInput.value = value;
-    stakesInput.focus();
   });
 
   addPills(
@@ -336,7 +337,6 @@ async function openTournamentStartSheet(service: SessionService): Promise<void> 
     buyInPillValues,
     value => {
       buyInInput.value = value;
-      buyInInput.focus();
     },
     value => `${value}`
   );

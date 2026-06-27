@@ -6,7 +6,7 @@ export interface TournamentStartPreferences {
 }
 
 const TOURNAMENT_START_PREFS_KEY = 'stackflow.tournament.start.preferences.v1';
-const MAX_VALUES = 8;
+const MAX_VALUES = 5;
 
 const EMPTY_PREFS: TournamentStartPreferences = {
   lastStakes: '',

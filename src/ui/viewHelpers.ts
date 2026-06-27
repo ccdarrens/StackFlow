@@ -61,6 +61,26 @@ export function parseDollarsToCents(rawValue: string, allowZero = false, maxDoll
   return Math.round(amount * 100);
 }
 
+export function blurActiveElement(): void {
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement) {
+    activeElement.blur();
+  }
+}
+
+export function attachDataEntryPillHandler(button: HTMLButtonElement, onPick: () => void): void {
+  const keepFocusOffPill = (event: Event) => {
+    event.preventDefault();
+  };
+
+  button.addEventListener('pointerdown', keepFocusOffPill);
+  button.addEventListener('mousedown', keepFocusOffPill);
+  button.addEventListener('click', () => {
+    onPick();
+    blurActiveElement();
+  });
+}
+
 export function formatMoney(cents: number, withPlus = false): string {
   const sign = cents < 0 ? '-' : (withPlus && cents > 0 ? '+' : '');
   return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;

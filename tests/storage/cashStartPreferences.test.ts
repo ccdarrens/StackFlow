@@ -56,4 +56,20 @@ describe('cash start preferences', () => {
     expect(next.lastStakes).toBe('5/10');
     expect(next.lastBuyInDollars).toBe('1000');
   });
+
+  it('keeps only the five most recent values', () => {
+    for (let index = 1; index <= 6; index += 1) {
+      saveCashStartPreferences({
+        location: `Room ${index}`,
+        stakes: `${index}/${index * 2}`,
+        buyInDollars: String(index * 100)
+      });
+    }
+
+    expect(loadCashStartPreferences()).toMatchObject({
+      locations: ['Room 6', 'Room 5', 'Room 4', 'Room 3', 'Room 2'],
+      stakes: ['6/12', '5/10', '4/8', '3/6', '2/4'],
+      buyIns: ['600', '500', '400', '300', '200']
+    });
+  });
 });

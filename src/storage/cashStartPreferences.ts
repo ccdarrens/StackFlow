@@ -8,7 +8,7 @@ export interface CashStartPreferences {
 }
 
 const CASH_START_PREFS_KEY = 'stackflow.cash.start.preferences.v1';
-const MAX_VALUES = 8;
+const MAX_VALUES = 5;
 
 const EMPTY_PREFS: CashStartPreferences = {
   lastLocation: '',

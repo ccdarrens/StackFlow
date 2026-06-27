@@ -37,19 +37,20 @@ html, body {
   background: #0f2b20;
   border: 1px solid rgba(201, 162, 39, 0.35);
   box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.35);
-  padding: 18px;
+  padding: 16px 16px 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   animation: sheet-rise 160ms ease-out;
 }
 
 .sheet h2 {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
 }
 
 .sheet-form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .sheet-form input,
@@ -66,18 +67,18 @@ html, body {
 .sheet-form input,
 .sheet-form select,
 .sheet-form textarea {
-  padding: 9px 10px;
-  min-height: 44px;
+  padding: 7px 9px;
+  min-height: 40px;
 }
 
 .sheet-form button {
-  min-height: 44px;
+  min-height: 40px;
 }
 
 .sheet-inline-fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
@@ -88,8 +89,8 @@ html, body {
 .pill-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 
 .pill-btn {
@@ -97,7 +98,7 @@ html, body {
   background: transparent;
   color: var(--ivory);
   border-radius: 999px;
-  padding: 4px 10px;
+  padding: 3px 8px;
   cursor: pointer;
 }
 
@@ -108,9 +109,29 @@ html, body {
 }
 
 .sheet-actions {
+  position: sticky;
+  bottom: 0;
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
+  margin: 6px -16px 0;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+  background:
+    linear-gradient(180deg, rgba(15, 43, 32, 0) 0%, #0f2b20 18px),
+    #0f2b20;
+  border-top: 1px solid rgba(243, 239, 227, 0.12);
+  z-index: 1;
+}
+
+.sheet-actions button {
+  flex: 0 1 auto;
+  min-width: 96px;
+  padding-inline: 12px;
+}
+
+.sheet-actions .session-end-btn {
+  width: auto;
 }
 
 .ghost-btn {
@@ -348,9 +369,11 @@ html, body {
 }
 
 
-.pill-btn-active {
-  background: rgba(201, 162, 39, 0.2);
-  border-color: rgba(201, 162, 39, 0.9);
+.pill-btn.pill-btn-active {
+  background: rgba(201, 162, 39, 0.28);
+  border-color: rgba(201, 162, 39, 0.95);
+  color: #fff8d8;
+  box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.28);
 }
 
 
@@ -736,6 +759,26 @@ html, body {
 @media (max-width: 430px) {
   .app-container {
     padding: 10px;
+  }
+
+  .sheet-backdrop {
+    padding: 8px 8px 0;
+  }
+
+  .sheet {
+    max-height: calc(100vh - 8px);
+    max-height: calc(100dvh - 8px);
+    padding: 14px 14px 0;
+  }
+
+  .sheet-actions {
+    justify-content: stretch;
+    margin-inline: -14px;
+    padding: 10px 14px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .sheet-actions button {
+    flex: 1 1 120px;
   }
 
   .sessions-card {
