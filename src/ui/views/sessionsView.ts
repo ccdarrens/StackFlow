@@ -3,6 +3,7 @@ import type { SessionService } from '../../services/sessionService';
 import { getSessionDurationMs, type Session } from '../../models/session';
 import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
+import { attachDataEntryPillHandler } from '../viewHelpers';
 
 type SessionFilterType = 'all' | 'cash' | 'tournament';
 type DateRangeFilter = 'all' | 'this_year' | 'this_month' | 'last_30_days' | 'last_90_days' | 'last_month' | 'last_year';
@@ -28,6 +29,7 @@ const SESSIONS_TABLE_COLLAPSED_KEY = 'stackflow.sessions.tableCollapsed.v1';
 const MAX_LOCATION_LENGTH = 30;
 const MAX_STAKES_LENGTH = 25;
 const MAX_BUY_IN_DOLLARS = 10000000;
+const MAX_DATA_ENTRY_PILLS = 5;
 
 type ManualMode = 'cash' | 'tournament';
 
@@ -95,7 +97,7 @@ function saveTableCollapsed(collapsed: boolean): void {
   localStorage.setItem(SESSIONS_TABLE_COLLAPSED_KEY, collapsed ? 'true' : 'false');
 }
 
-function mergeUnique(values: string[]): string[] {
+function mergeUnique(values: string[], maxValues = MAX_DATA_ENTRY_PILLS): string[] {
   const seen = new Set<string>();
   const merged: string[] = [];
 
@@ -112,6 +114,10 @@ function mergeUnique(values: string[]): string[] {
 
     seen.add(key);
     merged.push(value);
+
+    if (merged.length >= maxValues) {
+      break;
+    }
   }
 
   return merged;
@@ -162,10 +168,10 @@ function loadManualAddDefaults(): ManualAddDefaults {
       location: typeof parsed.location === 'string' ? parsed.location : '',
       buyInDollars: typeof parsed.buyInDollars === 'string' ? parsed.buyInDollars : '',
       returnDollars: typeof parsed.returnDollars === 'string' ? parsed.returnDollars : '0',
-      cashStakes: Array.isArray(parsed.cashStakes) ? parsed.cashStakes.filter(item => typeof item === 'string') : [],
-      tournamentStakes: Array.isArray(parsed.tournamentStakes) ? parsed.tournamentStakes.filter(item => typeof item === 'string') : [],
-      cashLocations: Array.isArray(parsed.cashLocations) ? parsed.cashLocations.filter(item => typeof item === 'string') : [],
-      tournamentLocations: Array.isArray(parsed.tournamentLocations) ? parsed.tournamentLocations.filter(item => typeof item === 'string') : []
+      cashStakes: Array.isArray(parsed.cashStakes) ? mergeUnique(parsed.cashStakes.filter(item => typeof item === 'string')) : [],
+      tournamentStakes: Array.isArray(parsed.tournamentStakes) ? mergeUnique(parsed.tournamentStakes.filter(item => typeof item === 'string')) : [],
+      cashLocations: Array.isArray(parsed.cashLocations) ? mergeUnique(parsed.cashLocations.filter(item => typeof item === 'string')) : [],
+      tournamentLocations: Array.isArray(parsed.tournamentLocations) ? mergeUnique(parsed.tournamentLocations.filter(item => typeof item === 'string')) : []
     };
   } catch {
     return defaultManualAddDefaults();
@@ -173,7 +179,13 @@ function loadManualAddDefaults(): ManualAddDefaults {
 }
 
 function saveManualAddDefaults(defaults: ManualAddDefaults): void {
-  localStorage.setItem(MANUAL_ADD_DEFAULTS_KEY, JSON.stringify(defaults));
+  localStorage.setItem(MANUAL_ADD_DEFAULTS_KEY, JSON.stringify({
+    ...defaults,
+    cashStakes: mergeUnique(defaults.cashStakes),
+    tournamentStakes: mergeUnique(defaults.tournamentStakes),
+    cashLocations: mergeUnique(defaults.cashLocations),
+    tournamentLocations: mergeUnique(defaults.tournamentLocations)
+  }));
 }
 
 function parseDollarsToCents(rawValue: string, allowZero = false): number | null {
@@ -341,26 +353,16 @@ function collectLocations(sessions: Session[]): string[] {
 
   return locations.sort((a, b) => a.localeCompare(b));
 }
-function collectStakes(sessions: Session[]): string[] {
-  const seen = new Set<string>();
-  const stakes: string[] = [];
-
-  for (const session of sessions) {
-    const value = (session.stakes ?? '').trim();
-    if (!value) {
-      continue;
-    }
-
-    const key = value.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-
-    seen.add(key);
-    stakes.push(value);
-  }
-
-  return stakes.sort((a, b) => a.localeCompare(b));
+function collectRecentSessionValues(
+  sessions: Session[],
+  selector: (session: Session) => string | undefined
+): string[] {
+  return mergeUnique(
+    sessions
+      .slice()
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .map(session => selector(session) ?? '')
+  );
 }
 
 function csvCell(value: string | number | undefined): string {
@@ -1630,12 +1632,12 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
 
       const stakesValues = mergeUnique([
         ...modeStakes,
-        ...collectStakes(sessionModeData)
+        ...collectRecentSessionValues(sessionModeData, session => session.stakes)
       ]);
 
       const locationValues = mergeUnique([
         ...modeLocations,
-        ...collectLocations(sessionModeData)
+        ...collectRecentSessionValues(sessionModeData, session => session.location)
       ]);
 
       stakesPillsHost.innerHTML = stakesValues
@@ -1650,13 +1652,13 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       const locationPills = Array.from(locationPillsHost.querySelectorAll('[data-manual-location]')) as HTMLButtonElement[];
 
       for (const pill of stakePills) {
-        pill.addEventListener('click', () => {
+        attachDataEntryPillHandler(pill, () => {
           stakesInput.value = pill.dataset.manualStakes ?? '';
         });
       }
 
       for (const pill of locationPills) {
-        pill.addEventListener('click', () => {
+        attachDataEntryPillHandler(pill, () => {
           locationInput.value = pill.dataset.manualLocation ?? '';
         });
       }
@@ -1775,10 +1777,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       })
       .join('');
 
-    const locationPills = collectLocations(completed)
+    const locationPills = collectRecentSessionValues(completed, item => item.location)
       .map(value => `<button type="button" class="pill-btn" data-location-pill="${escapeHtml(value)}">${escapeHtml(value)}</button>`)
       .join('');
-    const stakesPills = collectStakes(completed.filter(item => item.mode === session.mode))
+    const stakesPills = collectRecentSessionValues(completed.filter(item => item.mode === session.mode), item => item.stakes)
       .map(value => `<button type="button" class="pill-btn" data-stakes-pill="${escapeHtml(value)}">${escapeHtml(value)}</button>`)
       .join('');
     const modeLabel = session.mode === 'cash' ? 'Cash' : 'Tournament';
@@ -1850,13 +1852,13 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     document.addEventListener('keydown', onKeyDown);
 
     for (const pill of locationPillButtons) {
-      pill.addEventListener('click', () => {
+      attachDataEntryPillHandler(pill, () => {
         locationInput.value = pill.dataset.locationPill ?? '';
       });
     }
 
     for (const pill of stakesPillButtons) {
-      pill.addEventListener('click', () => {
+      attachDataEntryPillHandler(pill, () => {
         stakesInput.value = pill.dataset.stakesPill ?? '';
       });
     }

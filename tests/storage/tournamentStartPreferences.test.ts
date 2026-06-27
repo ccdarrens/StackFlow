@@ -38,4 +38,18 @@ describe('tournament start preferences', () => {
       buyIns: ['250', '120']
     });
   });
+
+  it('keeps only the five most recent values', () => {
+    for (let index = 1; index <= 6; index += 1) {
+      saveTournamentStartPreferences({
+        stakes: `$${index * 100}`,
+        buyInDollars: String(index * 100)
+      });
+    }
+
+    expect(loadTournamentStartPreferences()).toMatchObject({
+      stakes: ['$600', '$500', '$400', '$300', '$200'],
+      buyIns: ['600', '500', '400', '300', '200']
+    });
+  });
 });

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  attachDataEntryPillHandler,
   attachSheetCloseHandlers,
   formatDateTimeLocal,
   formatDuration,
@@ -29,6 +30,28 @@ describe('viewHelpers', () => {
     expect(parseDollarsToCents('0', true)).toBe(0);
     expect(parseDollarsToCents('12.345')).toBeNull();
     expect(parseDollarsToCents('100', false, 50)).toBeNull();
+  });
+
+  it('updates data-entry pills without leaving an input focused', () => {
+    const input = document.createElement('input');
+    const button = document.createElement('button');
+    document.body.append(input, button);
+
+    attachDataEntryPillHandler(button, () => {
+      input.value = 'Bellagio';
+    });
+
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    const pointerEvent = new Event('pointerdown', { bubbles: true, cancelable: true });
+    button.dispatchEvent(pointerEvent);
+    expect(pointerEvent.defaultPrevented).toBe(true);
+
+    button.click();
+
+    expect(input.value).toBe('Bellagio');
+    expect(document.activeElement).not.toBe(input);
   });
 
   it('closes sheets on cancel button, backdrop click, and escape key', () => {

@@ -179,6 +179,7 @@ function openExpenseSheet(service: SessionService): void {
       const pill = document.createElement('button');
       pill.type = 'button';
       pill.className = `pill-btn${category === selectedCategory ? ' pill-btn-active' : ''}`;
+      pill.setAttribute('aria-pressed', category === selectedCategory ? 'true' : 'false');
       pill.textContent = category.charAt(0).toUpperCase() + category.slice(1);
       pill.addEventListener('click', () => {
         selectedCategory = category;
