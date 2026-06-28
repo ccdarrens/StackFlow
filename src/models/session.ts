@@ -13,6 +13,8 @@ export interface Session {
   mode: SessionMode;
   stakes?: string;
   location?: string;
+  finishPosition?: number;
+  totalEntries?: number;
   events: SessionEvent[];
   breaks?: SessionBreak[];
   startedAt: number;

@@ -3,7 +3,7 @@ import type { SessionService } from '../../services/sessionService';
 import { getSessionDurationMs, type Session } from '../../models/session';
 import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
-import { attachDataEntryPillHandler } from '../viewHelpers';
+import { attachDataEntryPillHandler, parseOptionalPositiveInteger } from '../viewHelpers';
 
 type SessionFilterType = 'all' | 'cash' | 'tournament';
 type DateRangeFilter = 'all' | 'this_year' | 'this_month' | 'last_30_days' | 'last_90_days' | 'last_month' | 'last_year';
@@ -22,6 +22,11 @@ interface SessionsFilters {
   location: string;
   dateRange: DateRangeFilter;
 }
+
+type TournamentResultSession = Session & {
+  finishPosition: number;
+  totalEntries: number;
+};
 
 const SESSIONS_FILTERS_KEY = 'stackflow.sessions.filters.v1';
 const MANUAL_ADD_DEFAULTS_KEY = 'stackflow.sessions.manualAdd.v1';
@@ -365,6 +370,40 @@ function collectRecentSessionValues(
   );
 }
 
+function readTournamentResultInputs(
+  finishPositionInput: HTMLInputElement,
+  totalEntriesInput: HTMLInputElement,
+  errorEl: HTMLElement
+): { finishPosition: number | null; totalEntries: number | null } | null {
+  const finishPosition = parseOptionalPositiveInteger(finishPositionInput.value);
+  const totalEntries = parseOptionalPositiveInteger(totalEntriesInput.value);
+
+  if (finishPosition === null) {
+    errorEl.textContent = 'Finish position must be a whole number of 1 or more.';
+    return null;
+  }
+
+  if (totalEntries === null) {
+    errorEl.textContent = 'Total entries must be a whole number of 1 or more.';
+    return null;
+  }
+
+  if ((finishPosition === undefined) !== (totalEntries === undefined)) {
+    errorEl.textContent = 'Enter both finish position and total entries, or leave both blank.';
+    return null;
+  }
+
+  if (finishPosition !== undefined && totalEntries !== undefined && finishPosition > totalEntries) {
+    errorEl.textContent = 'Finish position cannot be greater than total entries.';
+    return null;
+  }
+
+  return {
+    finishPosition: finishPosition ?? null,
+    totalEntries: totalEntries ?? null
+  };
+}
+
 function csvCell(value: string | number | undefined): string {
   const raw = value === undefined ? '' : String(value);
   const escaped = raw.replace(/"/g, '""');
@@ -387,7 +426,9 @@ function buildSessionsCsv(sessions: Session[]): string {
     'gross_profit_cents',
     'net_profit_cents',
     'roi_percent',
-    'net_roi_percent'
+    'net_roi_percent',
+    'finish_position',
+    'total_entries'
   ];
 
   const lines = [headers.join(',')];
@@ -409,7 +450,9 @@ function buildSessionsCsv(sessions: Session[]): string {
       csvCell(totals.grossProfit),
       csvCell(totals.netProfit),
       csvCell(totals.roi === undefined ? '' : (totals.roi * 100).toFixed(2)),
-      csvCell(totals.netRoi === undefined ? '' : (totals.netRoi * 100).toFixed(2))
+      csvCell(totals.netRoi === undefined ? '' : (totals.netRoi * 100).toFixed(2)),
+      csvCell(session.finishPosition),
+      csvCell(session.totalEntries)
     ];
 
     lines.push(row.join(','));
@@ -439,6 +482,10 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+}
+
 function sanitizeSessionRecord(value: unknown): Session | null {
   if (!isPlainObject(value)) {
     return null;
@@ -451,6 +498,8 @@ function sanitizeSessionRecord(value: unknown): Session | null {
   const endedAt = value.endedAt;
   const updatedAt = value.updatedAt;
   const breaksRaw = value.breaks;
+  const finishPositionRaw = value.finishPosition;
+  const totalEntriesRaw = value.totalEntries;
 
   if (typeof id !== 'string' || id.trim().length === 0) {
     return null;
@@ -478,6 +527,22 @@ function sanitizeSessionRecord(value: unknown): Session | null {
 
   if (!isFiniteNumber(updatedAt) || updatedAt <= 0) {
     return null;
+  }
+
+  const hasFinishPosition = finishPositionRaw !== undefined;
+  const hasTotalEntries = totalEntriesRaw !== undefined;
+  if (hasFinishPosition || hasTotalEntries) {
+    if (mode !== 'tournament') {
+      return null;
+    }
+
+    if (!isPositiveInteger(finishPositionRaw) || !isPositiveInteger(totalEntriesRaw)) {
+      return null;
+    }
+
+    if (finishPositionRaw > totalEntriesRaw) {
+      return null;
+    }
   }
 
   const stakesRaw = value.stakes;
@@ -575,7 +640,7 @@ function sanitizeSessionRecord(value: unknown): Session | null {
   const stakes = typeof stakesRaw === 'string' ? stakesRaw.trim() : '';
   const location = typeof locationRaw === 'string' ? locationRaw.trim() : '';
 
-  return {
+  const sanitized: Session = {
     id,
     mode,
     stakes: stakes ? stakes : undefined,
@@ -586,6 +651,13 @@ function sanitizeSessionRecord(value: unknown): Session | null {
     endedAt,
     updatedAt
   };
+
+  if (hasFinishPosition && hasTotalEntries) {
+    sanitized.finishPosition = finishPositionRaw;
+    sanitized.totalEntries = totalEntriesRaw;
+  }
+
+  return sanitized;
 }
 export async function renderSessionsView(service: SessionService): Promise<HTMLElement> {
   let completed = (await service.getCompletedSessions())
@@ -745,6 +817,20 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         </div>
       </div>
 
+      <div id="sessionsTournamentFinishDistributionCard" class="sessions-chart-card" hidden>
+        <h3>Tournament Finish Distribution</h3>
+        <div class="sessions-chart-wrap">
+          <canvas id="sessionsTournamentFinishDistributionChart"></canvas>
+        </div>
+      </div>
+
+      <div id="sessionsTournamentFieldSizeFinishCard" class="sessions-chart-card" hidden>
+        <h3>Tournament Finish vs Field Size</h3>
+        <div class="sessions-chart-wrap">
+          <canvas id="sessionsTournamentFieldSizeFinishChart"></canvas>
+        </div>
+      </div>
+
       <p id="sessionsEmpty" class="sessions-empty" hidden>No sessions found for the selected filters.</p>
     </div>
   `;
@@ -778,6 +864,10 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   const itmCanvas = container.querySelector('#sessionsTournamentItmChart') as HTMLCanvasElement;
   const roiByBuyinCard = container.querySelector('#sessionsTournamentRoiByBuyinCard') as HTMLDivElement;
   const roiByBuyinCanvas = container.querySelector('#sessionsTournamentRoiByBuyinChart') as HTMLCanvasElement;
+  const finishDistributionCard = container.querySelector('#sessionsTournamentFinishDistributionCard') as HTMLDivElement;
+  const finishDistributionCanvas = container.querySelector('#sessionsTournamentFinishDistributionChart') as HTMLCanvasElement;
+  const fieldSizeFinishCard = container.querySelector('#sessionsTournamentFieldSizeFinishCard') as HTMLDivElement;
+  const fieldSizeFinishCanvas = container.querySelector('#sessionsTournamentFieldSizeFinishChart') as HTMLCanvasElement;
   const grossProfitEl = container.querySelector('#sessionsGrossProfit') as HTMLSpanElement;
   const netProfitEl = container.querySelector('#sessionsNetProfit') as HTMLSpanElement;
   const expensesEl = container.querySelector('#sessionsExpenses') as HTMLSpanElement;
@@ -792,6 +882,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
   let cashLengthProfitChart: Chart | null = null;
   let itmChart: Chart | null = null;
   let roiByBuyinChart: Chart | null = null;
+  let finishDistributionChart: Chart | null = null;
+  let fieldSizeFinishChart: Chart | null = null;
 
   let sortState: SortState = { key: 'date', direction: 'desc' };
   let tableCollapsed = loadTableCollapsed();
@@ -1539,6 +1631,190 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     roiByBuyinChart.update();
   };
 
+  const hasTournamentResult = (session: Session): session is TournamentResultSession =>
+    session.mode === 'tournament' &&
+    Number.isSafeInteger(session.finishPosition) &&
+    Number.isSafeInteger(session.totalEntries) &&
+    (session.finishPosition ?? 0) >= 1 &&
+    (session.totalEntries ?? 0) >= 1 &&
+    (session.finishPosition ?? 0) <= (session.totalEntries ?? 0);
+
+  const getTournamentResultSessions = (sessions: Session[]) => sessions.filter(hasTournamentResult);
+
+  const updateTournamentFinishDistributionChart = (sessions: Session[]) => {
+    const tournaments = getTournamentResultSessions(sessions);
+
+    if (tournaments.length === 0) {
+      finishDistributionCard.hidden = true;
+      if (finishDistributionChart) {
+        finishDistributionChart.destroy();
+        finishDistributionChart = null;
+      }
+      return;
+    }
+
+    finishDistributionCard.hidden = false;
+
+    const buckets = [
+      { label: '1st', count: 0 },
+      { label: 'Top 10%', count: 0 },
+      { label: 'Top 25%', count: 0 },
+      { label: 'Top 50%', count: 0 },
+      { label: 'Other', count: 0 }
+    ];
+
+    for (const session of tournaments) {
+      const finishPosition = session.finishPosition;
+      const totalEntries = session.totalEntries;
+      const finishRate = finishPosition / totalEntries;
+
+      if (finishPosition === 1) {
+        buckets[0].count += 1;
+      } else if (finishRate <= 0.1) {
+        buckets[1].count += 1;
+      } else if (finishRate <= 0.25) {
+        buckets[2].count += 1;
+      } else if (finishRate <= 0.5) {
+        buckets[3].count += 1;
+      } else {
+        buckets[4].count += 1;
+      }
+    }
+
+    const labels = buckets.map(bucket => bucket.label);
+    const data = buckets.map(bucket => bucket.count);
+
+    if (!finishDistributionChart) {
+      finishDistributionChart = new Chart(finishDistributionCanvas, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Tournaments',
+              data,
+              backgroundColor: 'rgba(127, 215, 143, 0.72)',
+              borderColor: '#7fd78f',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            },
+            y: {
+              beginAtZero: true,
+              ticks: {
+                color: '#F3EFE3',
+                precision: 0
+              },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            }
+          }
+        }
+      });
+      return;
+    }
+
+    finishDistributionChart.data.labels = labels;
+    finishDistributionChart.data.datasets[0].data = data;
+    finishDistributionChart.update();
+  };
+
+  const updateTournamentFieldSizeFinishChart = (sessions: Session[]) => {
+    const tournaments = getTournamentResultSessions(sessions);
+
+    if (tournaments.length === 0) {
+      fieldSizeFinishCard.hidden = true;
+      if (fieldSizeFinishChart) {
+        fieldSizeFinishChart.destroy();
+        fieldSizeFinishChart = null;
+      }
+      return;
+    }
+
+    fieldSizeFinishCard.hidden = false;
+
+    const points = tournaments.map(session => ({
+      x: session.totalEntries,
+      y: Number(((session.finishPosition / session.totalEntries) * 100).toFixed(2)),
+      label: `${session.finishPosition}/${session.totalEntries}`
+    }));
+
+    if (!fieldSizeFinishChart) {
+      fieldSizeFinishChart = new Chart(fieldSizeFinishCanvas, {
+        type: 'scatter',
+        data: {
+          datasets: [
+            {
+              label: 'Finish percentile',
+              data: points,
+              backgroundColor: 'rgba(201, 162, 39, 0.78)',
+              borderColor: '#c9a227'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                label: context => {
+                  const raw = context.raw as { x: number; y: number; label: string };
+                  return `${raw.label} (${raw.y}% of field), entries: ${raw.x}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: 'Total entries',
+                color: '#F3EFE3'
+              },
+              ticks: { color: '#F3EFE3' },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            },
+            y: {
+              reverse: true,
+              min: 0,
+              max: 100,
+              title: {
+                display: true,
+                text: 'Finish percentile (lower is better)',
+                color: '#F3EFE3'
+              },
+              ticks: {
+                color: '#F3EFE3',
+                callback: value => `${value}%`
+              },
+              grid: { color: 'rgba(243, 239, 227, 0.1)' }
+            }
+          }
+        }
+      });
+      return;
+    }
+
+    fieldSizeFinishChart.data.datasets[0].data = points;
+    fieldSizeFinishChart.update();
+  };
+
 
   const openManualAddSheet = () => {
     const defaults = loadManualAddDefaults();
@@ -1578,6 +1854,14 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           <label id="manualAddReturnLabel" for="manualAddReturn">${renderModeLabel()}</label>
           <input id="manualAddReturn" type="text" inputmode="decimal" required value="${escapeHtml(defaults.returnDollars)}" />
 
+          <div id="manualAddTournamentResultFields" class="sheet-field-group" ${currentMode === 'cash' ? 'hidden' : ''}>
+            <label for="manualAddFinishPosition">Finish Position (Optional)</label>
+            <input id="manualAddFinishPosition" type="number" inputmode="numeric" min="1" step="1" placeholder="e.g. 12" />
+
+            <label for="manualAddTotalEntries">Total Entries (Optional)</label>
+            <input id="manualAddTotalEntries" type="number" inputmode="numeric" min="1" step="1" placeholder="e.g. 186" />
+          </div>
+
           <p id="manualAddError" class="sheet-error"></p>
 
           <div class="sheet-actions">
@@ -1598,6 +1882,9 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     const buyInInput = backdrop.querySelector('#manualAddBuyIn') as HTMLInputElement;
     const returnInput = backdrop.querySelector('#manualAddReturn') as HTMLInputElement;
     const returnLabel = backdrop.querySelector('#manualAddReturnLabel') as HTMLLabelElement;
+    const tournamentResultFields = backdrop.querySelector('#manualAddTournamentResultFields') as HTMLDivElement;
+    const finishPositionInput = backdrop.querySelector('#manualAddFinishPosition') as HTMLInputElement;
+    const totalEntriesInput = backdrop.querySelector('#manualAddTotalEntries') as HTMLInputElement;
     const stakesPillsHost = backdrop.querySelector('#manualAddStakesPills') as HTMLDivElement;
     const locationPillsHost = backdrop.querySelector('#manualAddLocationPills') as HTMLDivElement;
     const modeButtons = Array.from(backdrop.querySelectorAll('[data-manual-mode]')) as HTMLButtonElement[];
@@ -1672,6 +1959,7 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         const mode = (button.dataset.manualMode as ManualMode | undefined) ?? 'cash';
         currentMode = mode;
         returnLabel.textContent = renderModeLabel();
+        tournamentResultFields.hidden = currentMode === 'cash';
         setActiveModeButton();
         renderModePills();
       });
@@ -1719,6 +2007,13 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         return;
       }
 
+      const tournamentResult = currentMode === 'tournament'
+        ? readTournamentResultInputs(finishPositionInput, totalEntriesInput, errorEl)
+        : null;
+      if (currentMode === 'tournament' && !tournamentResult) {
+        return;
+      }
+
       saveButton.disabled = true;
 
       try {
@@ -1732,7 +2027,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           stakes,
           location,
           buyInCents,
-          returnCents
+          returnCents,
+          ...(tournamentResult ? tournamentResult : {})
         });
 
         defaults.mode = currentMode;
@@ -1803,6 +2099,16 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
           <label for="sessionEditEndedAt">End Date/Time</label>
           <input id="sessionEditEndedAt" type="datetime-local" required value="${session.endedAt ? formatDateTimeLocal(session.endedAt) : ''}" />
 
+          ${session.mode === 'tournament' ? `
+            <div class="sheet-field-group">
+              <label for="sessionEditFinishPosition">Finish Position (Optional)</label>
+              <input id="sessionEditFinishPosition" type="number" inputmode="numeric" min="1" step="1" value="${session.finishPosition ?? ''}" />
+
+              <label for="sessionEditTotalEntries">Total Entries (Optional)</label>
+              <input id="sessionEditTotalEntries" type="number" inputmode="numeric" min="1" step="1" value="${session.totalEntries ?? ''}" />
+            </div>
+          ` : ''}
+
           <details class="session-edit-events-panel">
             <summary>Events (Read-only)${session.events.length ? ` (${session.events.length})` : ''}</summary>
             <div class="session-edit-events">${eventItems ? `<ul>${eventItems}</ul>` : '<p>No events</p>'}</div>
@@ -1826,6 +2132,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     const locationInput = backdrop.querySelector('#sessionEditLocation') as HTMLInputElement;
     const startedAtInput = backdrop.querySelector('#sessionEditStartedAt') as HTMLInputElement;
     const endedAtInput = backdrop.querySelector('#sessionEditEndedAt') as HTMLInputElement;
+    const finishPositionInput = backdrop.querySelector('#sessionEditFinishPosition') as HTMLInputElement | null;
+    const totalEntriesInput = backdrop.querySelector('#sessionEditTotalEntries') as HTMLInputElement | null;
     const errorEl = backdrop.querySelector('#sessionEditError') as HTMLParagraphElement;
     const cancelBtn = backdrop.querySelector('#sessionEditCancel') as HTMLButtonElement;
     const deleteBtn = backdrop.querySelector('#sessionDeleteBtn') as HTMLButtonElement;
@@ -1901,12 +2209,20 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
         return;
       }
 
+      const tournamentResult = session.mode === 'tournament' && finishPositionInput && totalEntriesInput
+        ? readTournamentResultInputs(finishPositionInput, totalEntriesInput, errorEl)
+        : null;
+      if (session.mode === 'tournament' && !tournamentResult) {
+        return;
+      }
+
       try {
         await service.updateSessionRecord(session.id, {
           stakes: stakesInput.value.trim(),
           location: locationInput.value.trim(),
           startedAt,
-          endedAt
+          endedAt,
+          ...(tournamentResult ? tournamentResult : {})
         });
         close();
         navigate('sessions');
@@ -1957,6 +2273,16 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     if (roiByBuyinChart) {
       roiByBuyinChart.destroy();
       roiByBuyinChart = null;
+    }
+
+    if (finishDistributionChart) {
+      finishDistributionChart.destroy();
+      finishDistributionChart = null;
+    }
+
+    if (fieldSizeFinishChart) {
+      fieldSizeFinishChart.destroy();
+      fieldSizeFinishChart = null;
     }
 
     navigate('start');
@@ -2083,6 +2409,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
       cashLengthProfitCard.hidden = true;
       itmCard.hidden = true;
       roiByBuyinCard.hidden = true;
+      finishDistributionCard.hidden = true;
+      fieldSizeFinishCard.hidden = true;
       return;
     }
 
@@ -2097,6 +2425,8 @@ export async function renderSessionsView(service: SessionService): Promise<HTMLE
     updateCashLengthVsProfitChart(filtered);
     updateTournamentItmChart(filtered);
     updateTournamentRoiByBuyinChart(filtered);
+    updateTournamentFinishDistributionChart(filtered);
+    updateTournamentFieldSizeFinishChart(filtered);
   };
 
 

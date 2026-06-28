@@ -5,6 +5,28 @@ import type { SessionRepository } from '../storage/repository';
 import { hasEnded, isActive } from '../models/session';
 import { generateId } from '../utils/id';
 
+export interface TournamentResultInput {
+  finishPosition?: number | null;
+  totalEntries?: number | null;
+}
+
+export interface CompletedSessionRecordInput extends TournamentResultInput {
+  mode: 'cash' | 'tournament';
+  startedAt: number;
+  endedAt: number;
+  stakes?: string;
+  location?: string;
+  buyInCents: number;
+  returnCents: number;
+}
+
+export interface SessionRecordUpdates extends TournamentResultInput {
+  stakes?: string;
+  location?: string;
+  startedAt?: number;
+  endedAt?: number | undefined;
+}
+
 export interface SessionService {
 
   createCashSession(stakes?: string, location?: string, initialBuyInCents?: number, startedAtOverride?: number): Promise<Session>;
@@ -19,7 +41,7 @@ export interface SessionService {
 
   addBreak(durationMinutes: number, startedAtOverride?: number): Promise<Session>;
 
-  endSession(overrideTimestamp?: number): Promise<Session>;
+  endSession(overrideTimestamp?: number, tournamentResult?: TournamentResultInput): Promise<Session>;
 
   getActiveSession(): Promise<Session | null>;
 
@@ -27,9 +49,9 @@ export interface SessionService {
 
   getCompletedSessions(): Promise<Session[]>;
 
-  createCompletedSessionRecord(input: { mode: 'cash' | 'tournament'; startedAt: number; endedAt: number; stakes?: string; location?: string; buyInCents: number; returnCents: number; }): Promise<Session>;
+  createCompletedSessionRecord(input: CompletedSessionRecordInput): Promise<Session>;
 
-  updateSessionRecord(sessionId: string, updates: { stakes?: string; location?: string; startedAt?: number; endedAt?: number | undefined }): Promise<Session>;
+  updateSessionRecord(sessionId: string, updates: SessionRecordUpdates): Promise<Session>;
 
   deleteSessionRecord(sessionId: string): Promise<void>;
 
@@ -215,7 +237,7 @@ export class DefaultSessionService implements SessionService {
     return session;
   }
 
-  async endSession(overrideTimestamp?: number): Promise<Session> {
+  async endSession(overrideTimestamp?: number, tournamentResult?: TournamentResultInput): Promise<Session> {
     const session = await this.requireActiveSession();
 
     if (!isActive(session)) {
@@ -226,6 +248,7 @@ export class DefaultSessionService implements SessionService {
 
     session.updatedAt = Date.now();
     session.endedAt = timestamp;
+    this.applyTournamentResult(session, tournamentResult);
 
     await this.repository.saveSession(session);
     await this.repository.setActiveSession(null);
@@ -233,15 +256,7 @@ export class DefaultSessionService implements SessionService {
     return session;
   }
 
-  async createCompletedSessionRecord(input: {
-    mode: 'cash' | 'tournament';
-    startedAt: number;
-    endedAt: number;
-    stakes?: string;
-    location?: string;
-    buyInCents: number;
-    returnCents: number;
-  }): Promise<Session> {
+  async createCompletedSessionRecord(input: CompletedSessionRecordInput): Promise<Session> {
     if (!Number.isFinite(input.startedAt) || input.startedAt <= 0) {
       throw new Error('Invalid start date/time');
     }
@@ -278,6 +293,11 @@ export class DefaultSessionService implements SessionService {
       updatedAt: now
     };
 
+    this.applyTournamentResult(session, {
+      finishPosition: input.finishPosition,
+      totalEntries: input.totalEntries
+    });
+
     if (input.buyInCents > 0) {
       session.events.push(this.createEvent('investment', input.buyInCents, 'buyin', input.startedAt));
     }
@@ -293,7 +313,7 @@ export class DefaultSessionService implements SessionService {
 
   async updateSessionRecord(
     sessionId: string,
-    updates: { stakes?: string; location?: string; startedAt?: number; endedAt?: number | undefined }
+    updates: SessionRecordUpdates
   ): Promise<Session> {
     const session = await this.repository.getSessionById(sessionId);
 
@@ -329,6 +349,13 @@ export class DefaultSessionService implements SessionService {
 
     if (next.endedAt !== undefined && next.endedAt < next.startedAt) {
       throw new Error('End date/time must be after start date/time');
+    }
+
+    if ('finishPosition' in updates || 'totalEntries' in updates) {
+      this.applyTournamentResult(next, {
+        finishPosition: updates.finishPosition,
+        totalEntries: updates.totalEntries
+      });
     }
 
     next.updatedAt = Date.now();
@@ -415,5 +442,43 @@ export class DefaultSessionService implements SessionService {
       startedAt,
       durationMinutes
     };
+  }
+
+  private applyTournamentResult(session: Session, input?: TournamentResultInput): void {
+    if (!input) {
+      return;
+    }
+
+    const finishPosition = input.finishPosition ?? undefined;
+    const totalEntries = input.totalEntries ?? undefined;
+
+    if (finishPosition === undefined && totalEntries === undefined) {
+      delete session.finishPosition;
+      delete session.totalEntries;
+      return;
+    }
+
+    if (session.mode !== 'tournament') {
+      throw new Error('Tournament results can only be recorded for tournament sessions');
+    }
+
+    if (finishPosition === undefined || totalEntries === undefined) {
+      throw new Error('Enter both finish position and total entries, or leave both blank');
+    }
+
+    if (!Number.isInteger(finishPosition) || finishPosition < 1) {
+      throw new Error('Finish position must be a whole number of 1 or more');
+    }
+
+    if (!Number.isInteger(totalEntries) || totalEntries < 1) {
+      throw new Error('Total entries must be a whole number of 1 or more');
+    }
+
+    if (finishPosition > totalEntries) {
+      throw new Error('Finish position cannot be greater than total entries');
+    }
+
+    session.finishPosition = finishPosition;
+    session.totalEntries = totalEntries;
   }
 }

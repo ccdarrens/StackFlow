@@ -119,6 +119,22 @@ describe('DefaultSessionService', () => {
     expect((await repository.getSessionById(session.id))?.endedAt).toBe(1_700_000_100_000);
   });
 
+  it('records optional tournament results when ending a tournament', async () => {
+    const session = await service.createTournamentSession();
+
+    const ended = await service.endSession(1_700_000_100_000, {
+      finishPosition: 12,
+      totalEntries: 186
+    });
+
+    expect(ended).toMatchObject({
+      id: session.id,
+      finishPosition: 12,
+      totalEntries: 186
+    });
+    expect(await service.getActiveSession()).toBeNull();
+  });
+
   it('creates a completed session record with buyin and payout events', async () => {
     const created = await service.createCompletedSessionRecord({
       mode: 'tournament',
@@ -127,11 +143,15 @@ describe('DefaultSessionService', () => {
       stakes: 'Daily $120',
       location: 'Resorts World',
       buyInCents: 12_000,
-      returnCents: 45_000
+      returnCents: 45_000,
+      finishPosition: 3,
+      totalEntries: 94
     });
 
     expect(created.events).toHaveLength(2);
     expect(created.breaks).toEqual([]);
+    expect(created.finishPosition).toBe(3);
+    expect(created.totalEntries).toBe(94);
     expect(created.events[0]?.note).toBe('buyin');
     expect(created.events[1]?.note).toBe('payout');
   });
@@ -155,6 +175,27 @@ describe('DefaultSessionService', () => {
       endedAt: 220,
       updatedAt: 999_999
     });
+  });
+
+  it('updates and clears tournament result fields', async () => {
+    const session = createSession({ id: 'session-1', mode: 'tournament', startedAt: 100, endedAt: 200 });
+    await repository.saveSession(session);
+
+    const updated = await service.updateSessionRecord('session-1', {
+      finishPosition: 7,
+      totalEntries: 72
+    });
+
+    expect(updated.finishPosition).toBe(7);
+    expect(updated.totalEntries).toBe(72);
+
+    const cleared = await service.updateSessionRecord('session-1', {
+      finishPosition: null,
+      totalEntries: null
+    });
+
+    expect(cleared.finishPosition).toBeUndefined();
+    expect(cleared.totalEntries).toBeUndefined();
   });
 
   it('filters completed sessions from all sessions', async () => {
@@ -185,5 +226,26 @@ describe('DefaultSessionService', () => {
 
     await expect(service.updateSessionRecord('session-1', { startedAt: -1 })).rejects.toThrow('Invalid start date/time');
     await expect(service.updateSessionRecord('session-1', { endedAt: 50 })).rejects.toThrow('End date/time must be after start date/time');
+  });
+
+  it('rejects invalid tournament result fields', async () => {
+    await repository.saveSession(createSession({ id: 'tournament-1', mode: 'tournament', startedAt: 100, endedAt: 200 }));
+    await repository.saveSession(createSession({ id: 'cash-1', mode: 'cash', startedAt: 100, endedAt: 200 }));
+
+    await expect(service.updateSessionRecord('tournament-1', { finishPosition: 5 })).rejects.toThrow('Enter both finish position and total entries');
+    await expect(service.updateSessionRecord('tournament-1', { finishPosition: 8, totalEntries: 7 })).rejects.toThrow('Finish position cannot be greater than total entries');
+    await expect(service.updateSessionRecord('cash-1', { finishPosition: 1, totalEntries: 10 })).rejects.toThrow('Tournament results can only be recorded');
+  });
+
+  it('rejects tournament result fields on completed cash records', async () => {
+    await expect(service.createCompletedSessionRecord({
+      mode: 'cash',
+      startedAt: 100,
+      endedAt: 200,
+      buyInCents: 10_000,
+      returnCents: 12_000,
+      finishPosition: 1,
+      totalEntries: 10
+    })).rejects.toThrow('Tournament results can only be recorded');
   });
 });

@@ -53,6 +53,12 @@ html, body {
   gap: 6px;
 }
 
+.sheet-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .sheet-form input,
 .sheet-form select,
 .sheet-form textarea,
