@@ -1,11 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   attachDataEntryPillHandler,
+  attachLiveSessionTitlebarHandlers,
   attachSheetCloseHandlers,
   formatDateTimeLocal,
   formatDuration,
+  openQrCodeSheet,
   parseDollarsToCents,
-  parseOptionalPositiveInteger
+  parseOptionalPositiveInteger,
+  renderLiveSessionTitlebar
 } from '../../src/ui/viewHelpers';
 
 describe('viewHelpers', () => {
@@ -87,5 +90,50 @@ describe('viewHelpers', () => {
     attachSheetCloseHandlers(backdrop, button);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(document.body.contains(backdrop)).toBe(false);
+  });
+
+  it('opens the share QR code sheet and closes it from the action button', () => {
+    openQrCodeSheet();
+
+    const backdrop = document.querySelector('.sheet-backdrop');
+    const image = document.querySelector('.qr-sheet-image') as HTMLImageElement;
+    const closeButton = document.querySelector('#closeQrSheet') as HTMLButtonElement;
+
+    expect(backdrop).toBeTruthy();
+    expect(image.alt).toBe('Stack Flow QR code');
+    expect(image.src).toContain('/images/stackflow-qr.png');
+
+    closeButton.click();
+
+    expect(document.querySelector('.sheet-backdrop')).toBeNull();
+  });
+
+  it('renders and wires live session titlebar tools', () => {
+    const container = document.createElement('div');
+    const onViewSessions = vi.fn();
+    container.innerHTML = renderLiveSessionTitlebar('Cash Session');
+    document.body.appendChild(container);
+
+    attachLiveSessionTitlebarHandlers(container, onViewSessions);
+
+    expect(container.querySelector('h1')?.textContent).toBe('Cash Session');
+    expect(container.querySelector('[data-live-session-qr]')?.getAttribute('aria-label')).toBe('Show Stack Flow QR code');
+    expect(container.querySelector('[data-live-session-history]')?.getAttribute('aria-label')).toBe('View past sessions');
+
+    (container.querySelector('[data-live-session-qr]') as HTMLButtonElement).click();
+    expect(document.querySelector('.qr-sheet-image')).toBeTruthy();
+
+    (container.querySelector('[data-live-session-history]') as HTMLButtonElement).click();
+    expect(onViewSessions).toHaveBeenCalledOnce();
+  });
+
+  it('escapes live session titlebar titles before rendering', () => {
+    const container = document.createElement('div');
+    const title = 'Cash <Session> & "Fun"';
+
+    container.innerHTML = renderLiveSessionTitlebar(title);
+
+    expect(container.querySelector('h1')?.textContent).toBe(title);
+    expect(container.querySelector('h1')?.children).toHaveLength(0);
   });
 });

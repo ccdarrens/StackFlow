@@ -1,3 +1,5 @@
+import logoTransparent from '../logo-transparent-bg.png';
+
 export function formatDuration(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
   const days = Math.floor(totalSeconds / 86400);
@@ -249,5 +251,64 @@ export function attachSheetCloseHandlers(backdrop: HTMLDivElement, closeButton: 
   document.addEventListener('keydown', onKeyDown);
 
   return close;
+}
+
+export function openQrCodeSheet(): void {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+  const qrCodeUrl = `${import.meta.env.BASE_URL}images/stackflow-qr.png`;
+
+  backdrop.innerHTML = `
+    <div class="sheet qr-sheet" role="dialog" aria-modal="true" aria-labelledby="qrSheetTitle">
+      <h2 id="qrSheetTitle">Share Stack Flow</h2>
+      <div class="qr-sheet-content">
+        <img class="qr-sheet-image" src="${qrCodeUrl}" alt="Stack Flow QR code" />
+      </div>
+      <div class="sheet-actions">
+        <button type="button" id="closeQrSheet" class="session-end-btn">Close</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const closeButton = backdrop.querySelector('#closeQrSheet') as HTMLButtonElement;
+  attachSheetCloseHandlers(backdrop, closeButton);
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[char] ?? char);
+}
+
+export function renderLiveSessionTitlebar(title: string): string {
+  return `
+    <div class="live-session-titlebar">
+      <h1>${escapeHtml(title)}</h1>
+      <div class="live-session-tools" aria-label="Session tools">
+        <button type="button" class="live-tool-btn" data-live-session-qr aria-label="Show Stack Flow QR code" title="Show QR code">
+          <img src="${logoTransparent}" alt="" />
+        </button>
+        <button type="button" class="live-tool-btn" data-live-session-history aria-label="View past sessions" title="View sessions">
+          <span class="live-history-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+export function attachLiveSessionTitlebarHandlers(container: ParentNode, onViewSessions: () => void): void {
+  container.querySelector('[data-live-session-qr]')
+    ?.addEventListener('click', () => {
+      openQrCodeSheet();
+    });
+
+  container.querySelector('[data-live-session-history]')
+    ?.addEventListener('click', onViewSessions);
 }
 

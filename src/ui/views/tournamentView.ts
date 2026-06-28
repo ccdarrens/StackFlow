@@ -5,6 +5,7 @@ import { calculateSessionTotals } from '../../stats/calculators';
 import { getActiveBreak, getSessionDurationMs } from '../../models/session';
 import { navigate } from '../router';
 import {
+  attachLiveSessionTitlebarHandlers,
   attachSheetCloseHandlers,
   celebratePositiveResult,
   formatDateTimeLocal,
@@ -12,7 +13,8 @@ import {
   parseDollarsToCents,
   parseOptionalPositiveInteger,
   playBreakWarningSignal,
-  primeBreakWarningSignal
+  primeBreakWarningSignal,
+  renderLiveSessionTitlebar
 } from '../viewHelpers';
 
 const EXPENSE_CATEGORIES: ExpenseCategory[] = ['tip', 'food', 'drink', 'travel', 'other'];
@@ -449,7 +451,7 @@ export async function renderTournamentView(session: Session, service: SessionSer
 
   container.innerHTML = `
       <div class="sessions-card tournament-card">
-        <h1>Tournament</h1>
+        ${renderLiveSessionTitlebar('Tournament')}
         <div class="tournament-meta">
           <p>${session.stakes ?? '-'} @ ${session.location ?? '-'}</p>
           <p><strong>Duration:</strong> <span id="activeDuration">${formatDuration(getSessionDurationMs(session, Date.now()))}</span></p>
@@ -523,6 +525,10 @@ export async function renderTournamentView(session: Session, service: SessionSer
     .addEventListener('click', () => {
       openExpenseSheet(service);
     });
+
+  attachLiveSessionTitlebarHandlers(container, () => {
+    navigate('sessions');
+  });
 
   startBreakButton.addEventListener('click', () => {
     if (startBreakButton.disabled) {

@@ -140,6 +140,25 @@ html, body {
   width: auto;
 }
 
+.qr-sheet {
+  width: min(420px, 100%);
+}
+
+.qr-sheet-content {
+  display: grid;
+  place-items: center;
+  padding: 8px 0 4px;
+}
+
+.qr-sheet-image {
+  width: min(300px, 78vw);
+  height: auto;
+  display: block;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
 .ghost-btn {
   background: transparent;
   border: 1px solid rgba(243, 239, 227, 0.3);
@@ -457,8 +476,58 @@ html, body {
   border-color: rgba(201, 162, 39, 0.6);
 }
 
-.cash-card h1 {
-  margin: 0 0 12px;
+.live-session-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.live-session-titlebar h1 {
+  margin: 0;
+}
+
+.live-session-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.live-tool-btn {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(243, 239, 227, 0.22);
+  border-radius: 10px;
+  background: #0a1f17;
+  color: var(--ivory);
+  cursor: pointer;
+}
+
+.live-tool-btn:focus-visible {
+  outline: 2px solid rgba(201, 162, 39, 0.9);
+  outline-offset: 3px;
+}
+
+.live-tool-btn img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.live-history-icon {
+  width: 19px;
+  height: 19px;
+  display: block;
+  border: 2px solid rgba(243, 239, 227, 0.85);
+  border-radius: 4px;
+  background:
+    linear-gradient(rgba(243, 239, 227, 0.85), rgba(243, 239, 227, 0.85)) 5px 5px / 9px 2px no-repeat,
+    linear-gradient(rgba(243, 239, 227, 0.85), rgba(243, 239, 227, 0.85)) 5px 10px / 9px 2px no-repeat;
 }
 
 .cash-meta {
