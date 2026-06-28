@@ -4,7 +4,8 @@ import {
   attachSheetCloseHandlers,
   formatDateTimeLocal,
   formatDuration,
-  parseDollarsToCents
+  parseDollarsToCents,
+  parseOptionalPositiveInteger
 } from '../../src/ui/viewHelpers';
 
 describe('viewHelpers', () => {
@@ -30,6 +31,14 @@ describe('viewHelpers', () => {
     expect(parseDollarsToCents('0', true)).toBe(0);
     expect(parseDollarsToCents('12.345')).toBeNull();
     expect(parseDollarsToCents('100', false, 50)).toBeNull();
+  });
+
+  it('parses optional positive integer strings with validation', () => {
+    expect(parseOptionalPositiveInteger('')).toBeUndefined();
+    expect(parseOptionalPositiveInteger(' 12 ')).toBe(12);
+    expect(parseOptionalPositiveInteger('0')).toBeNull();
+    expect(parseOptionalPositiveInteger('1.5')).toBeNull();
+    expect(parseOptionalPositiveInteger(String(Number.MAX_SAFE_INTEGER + 1))).toBeNull();
   });
 
   it('updates data-entry pills without leaving an input focused', () => {

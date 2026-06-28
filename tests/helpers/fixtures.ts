@@ -28,6 +28,8 @@ export function createSession(overrides: Partial<Session> = {}): Session {
     mode,
     stakes: overrides.stakes,
     location: overrides.location,
+    finishPosition: overrides.finishPosition,
+    totalEntries: overrides.totalEntries,
     events: overrides.events ?? [],
     breaks: overrides.breaks ?? [],
     startedAt: overrides.startedAt ?? 1_700_000_000_000,

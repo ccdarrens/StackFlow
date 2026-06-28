@@ -61,6 +61,24 @@ export function parseDollarsToCents(rawValue: string, allowZero = false, maxDoll
   return Math.round(amount * 100);
 }
 
+export function parseOptionalPositiveInteger(rawValue: string): number | null | undefined {
+  const normalized = rawValue.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (!/^\d+$/.test(normalized)) {
+    return null;
+  }
+
+  const value = Number(normalized);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    return null;
+  }
+
+  return value;
+}
+
 export function blurActiveElement(): void {
   const activeElement = document.activeElement;
   if (activeElement instanceof HTMLElement) {

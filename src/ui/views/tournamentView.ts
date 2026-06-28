@@ -10,6 +10,7 @@ import {
   formatDateTimeLocal,
   formatDuration,
   parseDollarsToCents,
+  parseOptionalPositiveInteger,
   playBreakWarningSignal,
   primeBreakWarningSignal
 } from '../viewHelpers';
@@ -337,6 +338,12 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
         <label for="payoutAmount">Payout Amount ($)</label>
         <input id="payoutAmount" type="text" inputmode="decimal" value="0" required />
 
+        <label for="finishPosition">Finish Position (Optional)</label>
+        <input id="finishPosition" type="number" inputmode="numeric" min="1" step="1" placeholder="e.g. 12" />
+
+        <label for="totalEntries">Total Entries (Optional)</label>
+        <input id="totalEntries" type="number" inputmode="numeric" min="1" step="1" placeholder="e.g. 186" />
+
         <label for="payoutNote">Note (Optional)</label>
         <input id="payoutNote" type="text" placeholder="Optional note" />
 
@@ -359,6 +366,8 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
   const endAtInput = backdrop.querySelector('#endSessionAt') as HTMLInputElement;
   const payoutAmountInput = backdrop.querySelector('#payoutAmount') as HTMLInputElement;
   const payoutNoteInput = backdrop.querySelector('#payoutNote') as HTMLInputElement;
+  const finishPositionInput = backdrop.querySelector('#finishPosition') as HTMLInputElement;
+  const totalEntriesInput = backdrop.querySelector('#totalEntries') as HTMLInputElement;
   const errorEl = backdrop.querySelector('#endSessionError') as HTMLParagraphElement;
   const cancelButton = backdrop.querySelector('#cancelEndSession') as HTMLButtonElement;
   const saveButton = backdrop.querySelector('#saveEndSession') as HTMLButtonElement;
@@ -384,6 +393,29 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
     }
 
     const note = payoutNoteInput.value.trim();
+    const finishPosition = parseOptionalPositiveInteger(finishPositionInput.value);
+    const totalEntries = parseOptionalPositiveInteger(totalEntriesInput.value);
+
+    if (finishPosition === null) {
+      errorEl.textContent = 'Finish position must be a whole number of 1 or more.';
+      return;
+    }
+
+    if (totalEntries === null) {
+      errorEl.textContent = 'Total entries must be a whole number of 1 or more.';
+      return;
+    }
+
+    if ((finishPosition === undefined) !== (totalEntries === undefined)) {
+      errorEl.textContent = 'Enter both finish position and total entries, or leave both blank.';
+      return;
+    }
+
+    if (finishPosition !== undefined && totalEntries !== undefined && finishPosition > totalEntries) {
+      errorEl.textContent = 'Finish position cannot be greater than total entries.';
+      return;
+    }
+
     const totals = calculateSessionTotals(session);
     const finalNetProfit = totals.returned + payoutCents - totals.invested - totals.expenses;
 
@@ -392,7 +424,7 @@ function openEndSessionSheet(session: Session, service: SessionService): void {
 
     try {
       await service.addReturn(payoutCents, note || undefined, timestamp);
-      await service.endSession(timestamp);
+      await service.endSession(timestamp, { finishPosition, totalEntries });
       close();
       if (finalNetProfit > 0) {
         celebratePositiveResult(finalNetProfit);
