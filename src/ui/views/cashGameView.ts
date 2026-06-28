@@ -4,10 +4,12 @@ import type { ExpenseCategory } from '../../models/event';
 import { calculateSessionTotals } from '../../stats/calculators';
 import { navigate } from '../router';
 import {
+  attachLiveSessionTitlebarHandlers,
   attachSheetCloseHandlers,
   celebratePositiveResult,
   formatDateTimeLocal,
   formatDuration,
+  renderLiveSessionTitlebar,
   parseDollarsToCents
 } from '../viewHelpers';
 
@@ -310,7 +312,7 @@ export async function renderCashGameView(session: Session, service: SessionServi
 
   container.innerHTML = `
       <div class="sessions-card cash-card">
-        <h1>Cash Session</h1>
+        ${renderLiveSessionTitlebar('Cash Session')}
         <div class="cash-meta">
           <p>${session.stakes ?? '-'} @ ${session.location ?? '-'}</p>
           <p><strong>Duration:</strong> <span id="activeDuration">${formatDuration(getSessionDurationMs(session, Date.now()))}</span></p>
@@ -347,6 +349,10 @@ export async function renderCashGameView(session: Session, service: SessionServi
     .addEventListener('click', () => {
       openExpenseSheet(service);
     });
+
+  attachLiveSessionTitlebarHandlers(container, () => {
+    navigate('sessions');
+  });
 
   container.querySelector('#endSession')!
     .addEventListener('click', () => {
